@@ -37,5 +37,11 @@ def get_products():
             "name": "Oversized Tee",
             "price": 3000,
             "image": "http://localhost:5173/images/t_shirt_03.jpg"
+        },
+        {
+            "id": 4,
+            "name": "Red Hoodie",
+            "price": 3500,
+            "image": "http://localhost:5173/images/t_shirt_04.jpg"
         }
     ]
