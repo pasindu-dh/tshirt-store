@@ -16,10 +16,26 @@ app.add_middleware(
 def home():
     return {"message": "Backend working"}
 
+
 @app.get("/products")
 def get_products():
     return [
-        {"id": 1, "name": "Black T-Shirt", "price": 2500},
-        {"id": 2, "name": "White T-Shirt", "price": 2000},
-        {"id": 3, "name": "Oversized Tee", "price": 3000},
+        {
+            "id": 1,
+            "name": "Black T-Shirt",
+            "price": 2500,
+            "image": "http://localhost:5173/images/t_shirt_01.jpg"
+        },
+        {
+            "id": 2,
+            "name": "White T-Shirt",
+            "price": 2000,
+            "image": "http://localhost:5173/images/t_shirt_02.jpg"
+        },
+        {
+            "id": 3,
+            "name": "Oversized Tee",
+            "price": 3000,
+            "image": "http://localhost:5173/images/t_shirt_03.jpg"
+        }
     ]
