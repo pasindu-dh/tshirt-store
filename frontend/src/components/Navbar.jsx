@@ -1,25 +1,33 @@
 import { FiSearch, FiShoppingBag } from "react-icons/fi";
 
 function Navbar({ setSearch, cartCount, openCart }) {
+
+  const scrollToSection = (id) => {
+    const section = document.getElementById(id);
+    section?.scrollIntoView({ behavior: "smooth" });
+  };
+
   return (
     <nav className="fixed top-0 left-0 w-full z-50 backdrop-blur-md bg-[#020617]/80 border-b border-gray-800">
       
       <div className="flex justify-between items-center px-10 py-4">
 
         {/* LOGO */}
-        <a href="#home">
-          <h1 className="text-2xl font-bold cursor-pointer hover:scale-105 transition">
-            <span className="text-cyan-400">FUR</span>
-            <span className="text-white">ZY</span>
-          </h1>
-        </a>
+        <h1
+          onClick={() => scrollToSection("home")}
+          className="text-2xl font-bold cursor-pointer hover:scale-105 transition"
+        >
+          <span className="text-cyan-400">FU</span>
+          <span className="text-white">R</span>
+          <span className="text-cyan-400">ZY</span>
+        </h1>
 
         {/* MENU */}
         <ul className="hidden md:flex gap-8 text-gray-300">
-          <li><a href="#home" className="hover:text-cyan-400 transition">Home</a></li>
-          <li><a href="#shop" className="hover:text-cyan-400 transition">Shop</a></li>
-          <li><a href="#about" className="hover:text-cyan-400 transition">About</a></li>
-          <li><a href="#contact" className="hover:text-cyan-400 transition">Contact</a></li>
+          <li onClick={() => scrollToSection("home")} className="cursor-pointer hover:text-cyan-400 transition">Home</li>
+          <li onClick={() => scrollToSection("shop")} className="cursor-pointer hover:text-cyan-400 transition">Shop</li>
+          <li onClick={() => scrollToSection("about")} className="cursor-pointer hover:text-cyan-400 transition">About</li>
+          <li onClick={() => scrollToSection("contact")} className="cursor-pointer hover:text-cyan-400 transition">Contact</li>
         </ul>
 
         {/* RIGHT SIDE */}
@@ -36,8 +44,11 @@ function Navbar({ setSearch, cartCount, openCart }) {
             />
           </div>
 
-          {/* CART ICON + COUNT */}
-          <div className="relative cursor-pointer">
+          {/* CART ICON */}
+          <div
+            onClick={openCart}
+            className="relative cursor-pointer"
+          >
             <FiShoppingBag className="text-xl hover:text-cyan-400 transition" />
 
             {cartCount > 0 && (
