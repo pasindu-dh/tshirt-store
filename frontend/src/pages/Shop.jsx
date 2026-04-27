@@ -5,7 +5,7 @@ function Shop() {
   const [products, setProducts] = useState([]);
 
   useEffect(() => {
-    axios.get("http://127.0.0.1:8000/products")
+    axios.get("http://127.0.0.1:8005/products")
       .then(res => setProducts(res.data));
   }, []);
 

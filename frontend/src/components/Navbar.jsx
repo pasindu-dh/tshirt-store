@@ -10,12 +10,12 @@ function Navbar({ setSearch, cartCount, openCart }) {
   return (
     <nav className="fixed top-0 left-0 w-full z-50 backdrop-blur-md bg-[#020617]/80 border-b border-gray-800">
       
-      <div className="flex justify-between items-center px-10 py-4">
+      <div className="flex justify-between items-center px-10 py-5">
 
         {/* LOGO */}
         <h1
           onClick={() => scrollToSection("home")}
-          className="text-2xl font-bold cursor-pointer hover:scale-105 transition"
+          className="text-4xl font-bold cursor-pointer hover:scale-105 transition"
         >
           <span className="text-cyan-400">FU</span>
           <span className="text-white">R</span>
@@ -23,7 +23,7 @@ function Navbar({ setSearch, cartCount, openCart }) {
         </h1>
 
         {/* MENU */}
-        <ul className="hidden md:flex gap-8 text-gray-300">
+        <ul className="text-1xl hidden md:flex gap-10 text-gray-200">
           <li onClick={() => scrollToSection("home")} className="cursor-pointer hover:text-cyan-400 transition">Home</li>
           <li onClick={() => scrollToSection("shop")} className="cursor-pointer hover:text-cyan-400 transition">Shop</li>
           <li onClick={() => scrollToSection("about")} className="cursor-pointer hover:text-cyan-400 transition">About</li>

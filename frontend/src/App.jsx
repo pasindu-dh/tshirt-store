@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import Navbar from "./components/Navbar";
 import Cart from "./components/Cart";
+import ParticleBackground from "./components/ParticleBackground";
+
 
 function App() {
 
@@ -18,7 +20,7 @@ function App() {
 
   // FETCH PRODUCTS
   useEffect(() => {
-    axios.get("http://127.0.0.1:8000/products")
+    axios.get("http://127.0.0.1:8005/products")
       .then((res) => {
         setProducts(res.data);
         setLoading(false);
@@ -61,7 +63,13 @@ function App() {
   };
 
   return (
-    <div className="bg-black text-white min-h-screen">
+
+    <>
+    {/* BACKGROUND */}
+    <ParticleBackground />
+
+    <div className="relative z-10 bg-black text-white min-h-screen">
+
 
       {/* NAVBAR */}
       <Navbar
@@ -81,10 +89,10 @@ function App() {
       {/* HOME / HERO */}
       <section id="home" className="relative h-screen">
 
-        <img
-          src="/hero.png"
-          className="absolute w-full h-full object-cover"
-        />
+      <img
+        src="/hero.png"
+        className="absolute w-full h-full object-cover opacity-40"
+      />
 
         <div className="absolute inset-0 bg-black/60"></div>
 
@@ -97,12 +105,14 @@ function App() {
             Premium streetwear for your lifestyle
           </p>
 
-          <button
-            onClick={() => scrollToSection("shop")}
-            className="mt-6 bg-white text-black px-6 py-3 font-semibold hover:bg-gray-200 transition"
-          >
-            SHOP NOW
-          </button>
+        <button className="relative mt-8 px-10 py-4 rounded-full font-semibold text-black 
+        bg-gradient-to-r from-cyan-400 to-blue-500 
+        shadow-[0_0_25px_rgba(34,211,238,0.7)] 
+        transition-all duration-300 
+        hover:scale-110 
+        hover:shadow-[0_0_40px_rgba(34,211,238,1)]">
+          SHOP NOW
+        </button>
         </div>
 
       </section>
@@ -170,6 +180,9 @@ function App() {
       </section>
 
     </div>
+
+
+    </>
   );
 }
 
