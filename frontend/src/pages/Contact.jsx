@@ -1,6 +1,6 @@
 function Contact() {
   return (
-    <div className="min-h-screen px-10 py-20 bg-[#020617] text-white">
+    <div className="min-h-screen px-10 py-25 bg-[#020617] text-white">
 
       <h1 className="text-4xl font-bold mb-6 text-center">
         Contact Us

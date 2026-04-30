@@ -24,8 +24,7 @@ function Navbar({ setSearch, cartCount, openCart }) {
   };
 
   return (
-    <nav className="fixed top-0 left-0 w-full z-50 backdrop-blur-md bg-[#020617]/80 border-b border-gray-800">
-      
+<nav className="fixed top-0 left-0 w-full h-20 z-50 backdrop-blur-md bg-[#020617]/80 border-b border-gray-800">      
       <div className="flex justify-between items-center px-10 py-5">
 
         {/* LOGO */}

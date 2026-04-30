@@ -8,7 +8,9 @@ function Checkout({ cart }) {
   return (
     <div className="min-h-screen bg-[#020617] text-white p-10">
 
-      <h1 className="text-3xl font-bold mb-6">Checkout</h1>
+      <h1 className="text-4xl font-bold mb-6 text-center">
+        Checkout
+      </h1>
 
       {cart.map(item => (
         <div key={item.id} className="flex justify-between mb-3">

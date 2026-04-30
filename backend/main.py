@@ -1,47 +1,43 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
-# ✅ THIS IS THE FIX
+# ✅ Allow frontend (React) to connect
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # you can restrict later
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# ✅ Serve images from local folder
+app.mount("/images", StaticFiles(directory="images"), name="images")
+
+# ✅ Fake database (30 products for testing)
+all_products = [
+    {
+        "id": i,
+        "name": f"Product {i}",
+        "price": 1000 + i * 500,  # Just a sample price
+        "image": f"http://127.0.0.1:8005/images/t_shirt_0{i}.jpg"
+    }
+    for i in range(1, 31)
+]
+
+# ✅ Pagination API (IMPORTANT)
+@app.get("/products")
+def get_products(page: int = Query(1, ge=1), limit: int = 6):
+    start = (page - 1) * limit
+    end = start + limit
+
+    paginated_products = all_products[start:end]
+
+    return paginated_products
+
+# ✅ Test route
 @app.get("/")
 def home():
     return {"message": "Backend working"}
-
-
-@app.get("/products")
-def get_products():
-    return [
-        {
-            "id": 1,
-            "name": "Black T-Shirt",
-            "price": 2500,
-            "image": "http://localhost:5173/images/t_shirt_01.jpg"
-        },
-        {
-            "id": 2,
-            "name": "White T-Shirt",
-            "price": 2000,
-            "image": "http://localhost:5173/images/t_shirt_02.jpg"
-        },
-        {
-            "id": 3,
-            "name": "Oversized Tee",
-            "price": 3000,
-            "image": "http://localhost:5173/images/t_shirt_03.jpg"
-        },
-        {
-            "id": 4,
-            "name": "Red Hoodie",
-            "price": 3500,
-            "image": "http://localhost:5173/images/t_shirt_04.jpg"
-        }
-    ]
