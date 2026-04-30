@@ -1,10 +1,16 @@
 function About() {
   return (
-    <div className="pt-24 px-10">
-      <h1 className="text-3xl font-bold mb-4">About</h1>
-      <p className="text-gray-400">
-        FURZY is a modern streetwear brand focused on style and comfort.
+    <div className="min-h-screen px-10 py-20 bg-[#020617] text-white">
+
+      <h1 className="text-4xl font-bold mb-6 text-center">
+        About Us
+      </h1>
+
+      <p className="max-w-3xl mx-auto text-center text-gray-400 leading-7">
+        We create modern streetwear that reflects your personality and lifestyle.
+        Our goal is to deliver premium quality fashion with a bold identity.
       </p>
+
     </div>
   );
 }

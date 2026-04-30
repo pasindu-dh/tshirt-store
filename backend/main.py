@@ -24,24 +24,24 @@ def get_products():
             "id": 1,
             "name": "Black T-Shirt",
             "price": 2500,
-            "image": "http://localhost:5175/images/t_shirt_01.jpg"
+            "image": "http://localhost:5173/images/t_shirt_01.jpg"
         },
         {
             "id": 2,
             "name": "White T-Shirt",
             "price": 2000,
-            "image": "http://localhost:5175/images/t_shirt_02.jpg"
+            "image": "http://localhost:5173/images/t_shirt_02.jpg"
         },
         {
             "id": 3,
             "name": "Oversized Tee",
             "price": 3000,
-            "image": "http://localhost:5175/images/t_shirt_03.jpg"
+            "image": "http://localhost:5173/images/t_shirt_03.jpg"
         },
         {
             "id": 4,
             "name": "Red Hoodie",
             "price": 3500,
-            "image": "http://localhost:5175/images/t_shirt_04.jpg"
+            "image": "http://localhost:5173/images/t_shirt_04.jpg"
         }
     ]

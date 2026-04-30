@@ -15,94 +15,89 @@ function ParticleBackground() {
       style={{
         position: "fixed",
         top: 0,
-        left: 0
+        left: 0,
+        width: "100%",
+        height: "100%",
+        pointerEvents: "none", // ✅ allows clicking through particles
       }}
       options={{
         fullScreen: {
           enable: true,
-          zIndex: -1
+          zIndex: -1,
         },
 
         background: {
-        color: {
-            value: "transparent"
-        }
+          color: {
+            value: "transparent",
+          },
         },
+
+        fpsLimit: 60,
 
         particles: {
           number: {
-            value: 200,
+            value: 50, // balanced amount
             density: {
               enable: true,
-              area: 800
-            }
+              area: 800,
+            },
           },
 
-        color: {
-        value: "#ffffff"   // 🔥 bright white
-        },
+          color: {
+            value: "#22d3ee", // cyan theme
+          },
 
           shape: {
-            type: "circle"
+            type: "circle",
           },
 
           opacity: {
-            value: 0.9
+            value: { min: 0.2, max: 0.4 }, // soft variation
           },
 
           size: {
-            value: 6,
+            value: { min: 1, max: 3 },
           },
 
-        links: {
-        enable: true,
-        distance: 140,
-        color: "#ffffff",
-        opacity: 0.7,   // 🔥 increase
-        width: 1
-        },
+          links: {
+            enable: true,
+            distance: 150,
+            color: "#22d3ee",
+            opacity: 0.2,
+            width: 1,
+          },
 
           move: {
             enable: true,
-            speed: 5,
-            direction: "none",
+            speed: 1, // smooth slow movement
             outModes: {
-              default: "bounce"
-            }
-          }
+              default: "out",
+            },
+          },
         },
 
         interactivity: {
           events: {
             onHover: {
               enable: true,
-              mode: ["grab", "bubble"]
+              mode: "grab",
             },
             onClick: {
-              enable: true,
-              mode: "push"
-            }
+              enable: false,
+            },
           },
 
           modes: {
             grab: {
-              distance: 250,
+              distance: 120,
               links: {
-                opacity: 1
-              }
+                opacity: 0.4,
+              },
             },
+          },
+        },
 
-            bubble: {
-              distance: 250,
-              size: 15,
-              duration: 0.8
-            },
-
-            push: {
-              quantity: 6
-            }
-          }
-        }
+        detectRetina: true,
       }}
     />
   );
