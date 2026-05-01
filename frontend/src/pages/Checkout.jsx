@@ -6,7 +6,7 @@ function Checkout({ cart }) {
   );
 
   return (
-    <div className="min-h-screen bg-[#020617] text-white p-10">
+    <div className="min-h-screen px-10 pt-18 pb-20">
 
       <h1 className="text-4xl font-bold mb-6 text-center">
         Checkout

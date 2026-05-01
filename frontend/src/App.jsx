@@ -6,12 +6,14 @@ import ParticleBackground from "./components/ParticleBackground";
 import { Routes, Route } from "react-router-dom";
 import About from "./pages/About";
 import Contact from "./pages/Contact";
+import { useNavigate } from "react-router-dom";
 
 
 function App() {
 
   const [products, setProducts] = useState([]);
   const [search, setSearch] = useState("");
+
 
   const [cart, setCart] = useState(() => {
     const saved = localStorage.getItem("cart");
@@ -69,7 +71,7 @@ function App() {
     <>
       <ParticleBackground />
 
-      <div className="relative z-10 bg-black text-white min-h-screen">
+      <div className="relative z-10 bg-black text-white min-h-screen pt-20">
 
         {/* NAVBAR */}
         <Navbar
@@ -115,7 +117,7 @@ function App() {
                   </p>
 
                   <button
-                    onClick={() => scrollToSection("shop")}
+                    onClick={() => navigate("/shop")}
                     className="mt-8 px-10 py-4 rounded-full font-semibold text-black 
                     bg-gradient-to-r from-cyan-400 to-blue-500 
                     shadow-[0_0_25px_rgba(34,211,238,0.7)] 
@@ -180,8 +182,8 @@ function App() {
             </>
           } />
 
-          <Route path="/shop" element={
-            <section className="min-h-screen px-10 py-20">
+        <Route path="/shop" element={
+          <section className="min-h-screen px-10 pb-20">        
 
               <h2 className="text-3xl font-bold mb-10 text-center">
                 Shop

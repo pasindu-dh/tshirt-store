@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import InfiniteScroll from "react-infinite-scroll-component";
+import { Routes, Route, useNavigate } from "react-router-dom";
 
 function Shop() {
   const [products, setProducts] = useState([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
 
-  // 🔥 Fetch products
   const fetchProducts = async () => {
     try {
       const res = await axios.get(
@@ -16,10 +16,8 @@ function Shop() {
 
       const newProducts = res.data;
 
-      // ✅ Append products
       setProducts((prev) => [...prev, ...newProducts]);
 
-      // ✅ Stop if no more data
       if (newProducts.length === 0) {
         setHasMore(false);
       }
@@ -29,20 +27,21 @@ function Shop() {
     }
   };
 
-  // 🔥 Load data when page changes
   useEffect(() => {
     fetchProducts();
   }, [page]);
 
-  // 🔥 Load next page
   const fetchMoreData = () => {
     setPage((prev) => prev + 1);
   };
 
+  // ✅ THIS WAS MISSING
   return (
-    <div className="min-h-screen px-10 pt-20 pb-10 bg-[#020617] text-white">
-      <h1 className="text-4xl font-bold mb-6 text-center">
-        SHOP
+    <div className="min-h-screen px-10 pt-18 pb-20">
+
+      {/* 🔥 GAP FIX HERE */}
+      <h1 className="text-4xl font-bold mt-10 mb-10 text-center scroll-mt-24">
+        Shop
       </h1>
 
       <InfiniteScroll

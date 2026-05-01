@@ -1,6 +1,7 @@
 import { FiSearch, FiShoppingBag } from "react-icons/fi";
 import { useNavigate, useLocation } from "react-router-dom";
 
+
 function Navbar({ setSearch, cartCount, openCart }) {
 
   const navigate = useNavigate();
