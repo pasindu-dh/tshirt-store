@@ -17,6 +17,7 @@ A full-stack web application featuring an interactive React frontend and a robus
 - **FastAPI** (High-performance Python web framework)
 - **SQLAlchemy 2.0** + **Alembic** (ORM and database migrations)
 - **SQLite** for local development (PostgreSQL-ready via `DATABASE_URL`)
+- **PyJWT** + **pwdlib (Argon2)** (JWT authentication and password hashing)
 - **Pydantic Settings** (Environment configuration)
 - **Uvicorn** (ASGI server)
 - **StaticFiles** (Local image serving)
@@ -37,7 +38,10 @@ tshirt-store/
 │   │   ├── routers/      # Public and admin API routes
 │   │   ├── services/     # Catalog business logic
 │   │   ├── utils/        # Slug helpers
-│   │   └── seed.py       # Sample data seed script
+│   │   ├── security.py   # Password hashing and JWT helpers
+│   │   ├── dependencies.py # Current-user and admin-guard dependencies
+│   │   ├── seed.py       # Sample catalog seed script
+│   │   └── seed_admin.py # Development admin account seed script
 │   ├── alembic/          # Database migrations
 │   ├── images/           # Static product images served by the backend
 │   ├── main.py           # Entry point for `uvicorn main:app`
@@ -73,7 +77,12 @@ The backend serves the API and static images for the products.
    python -m app.seed
    ```
    Use `python -m app.seed --reset` to wipe the catalog and seed it again.
-5. Run the backend server:
+5. Create the development admin account:
+   ```bash
+   python -m app.seed_admin
+   ```
+   The default credentials are `admin@furzy.local` / `ChangeMe123!`. Override `ADMIN_NAME`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` in `backend/.env` before running the script — and always change them before deploying.
+6. Run the backend server:
    ```bash
    uvicorn main:app --reload --port 8005
    ```
@@ -100,9 +109,11 @@ The frontend runs on Vite and communicates with the FastAPI backend.
    ```
    *The terminal will output the local URL (usually `http://localhost:5173`) where you can view the application.*
 
+   Frontend routes: `/` (home), `/shop`, `/about`, `/contact`, `/checkout`, `/login`, `/register`, `/forbidden`, and `/admin` (admin role only).
+
 ## 🔗 API Endpoints
 
-### Public
+### Catalog (public)
 - `GET /products`: Paginated product list.
   - Query parameters: `page`, `limit` (max 100), `search`, `category` (slug), `sort` (`newest`, `price_asc`, `price_desc`, `name`).
   - Returns the `X-Total-Count` header with the total number of matching products.
@@ -111,8 +122,14 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 - `GET /images/{filename}`: Serves static images for the T-shirts.
 - `GET /`: Health check endpoint.
 
+### Authentication
+- `POST /auth/register`: Create a customer account and return access + refresh tokens.
+- `POST /auth/login`: OAuth2 password-form login (`username` is the email). Also enables the **Authorize** button in `/docs`.
+- `POST /auth/refresh`: Exchange a refresh token for a new token pair.
+- `GET /auth/me`: Return the current authenticated user.
+
 ### Admin
-> These endpoints are **not authenticated yet**. Admin authentication is added in Phase 2, before deployment.
+> All admin endpoints require `Authorization: Bearer <access_token>` for a user with the `admin` role. Requests without a token return `401`; customer tokens return `403`.
 
 - `GET /admin/products`: Product list including inactive products.
 - `POST /admin/products`: Create a product with images and size variants.

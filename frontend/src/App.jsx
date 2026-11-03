@@ -3,11 +3,16 @@ import { Route, Routes } from "react-router-dom";
 import Cart from "./components/Cart";
 import Navbar from "./components/Navbar";
 import ParticleBackground from "./components/ParticleBackground";
+import ProtectedRoute from "./components/ProtectedRoute";
 import About from "./pages/About";
+import AdminDashboard from "./pages/AdminDashboard";
 import Checkout from "./pages/Checkout";
 import Contact from "./pages/Contact";
+import Forbidden from "./pages/Forbidden";
 import Home from "./pages/Home";
+import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
+import Register from "./pages/Register";
 import Shop from "./pages/Shop";
 
 function App() {
@@ -27,6 +32,17 @@ function App() {
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/checkout" element={<Checkout />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/forbidden" element={<Forbidden />} />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute adminOnly>
+                <AdminDashboard />
+              </ProtectedRoute>
+            }
+          />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </div>

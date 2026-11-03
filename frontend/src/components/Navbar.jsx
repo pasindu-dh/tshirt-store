@@ -1,11 +1,13 @@
-import { FiSearch, FiShoppingBag } from "react-icons/fi";
+import { FiLogOut, FiSearch, FiShoppingBag } from "react-icons/fi";
 import { useLocation, useNavigate } from "react-router-dom";
+import useAuth from "../hooks/useAuth";
 import useCart from "../hooks/useCart";
 
 function Navbar({ search, setSearch }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { cartCount, openCart } = useCart();
+  const { user, isAdmin, logout } = useAuth();
 
   const goHome = () => {
     if (location.pathname === "/") {
@@ -22,6 +24,10 @@ function Navbar({ search, setSearch }) {
     if (location.pathname !== "/shop") {
       navigate("/shop");
     }
+  };
+
+  const handleLogout = () => {
+    logout();
   };
 
   return (
@@ -66,12 +72,21 @@ function Navbar({ search, setSearch }) {
           >
             Contact
           </li>
+
+          {isAdmin && (
+            <li
+              onClick={() => navigate("/admin")}
+              className="cursor-pointer text-cyan-400 hover:text-cyan-300"
+            >
+              Admin
+            </li>
+          )}
         </ul>
 
         {/* RIGHT SIDE */}
         <div className="flex items-center gap-5">
           {/* SEARCH */}
-          <div className="hidden sm:flex items-center bg-[#111827] px-4 py-2 rounded-full w-56">
+          <div className="hidden lg:flex items-center bg-[#111827] px-4 py-2 rounded-full w-56">
             <FiSearch className="text-gray-400 mr-2" />
             <input
               type="text"
@@ -96,6 +111,31 @@ function Navbar({ search, setSearch }) {
               </span>
             )}
           </button>
+
+          {/* ACCOUNT */}
+          {user ? (
+            <div className="flex items-center gap-3">
+              <span className="hidden xl:block max-w-[140px] truncate text-sm text-gray-300">
+                {user.name}
+              </span>
+              <button
+                type="button"
+                onClick={handleLogout}
+                aria-label="Log out"
+                className="text-xl text-gray-300 hover:text-cyan-400 transition"
+              >
+                <FiLogOut />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => navigate("/login")}
+              className="text-sm font-semibold text-cyan-400 hover:text-cyan-300 transition"
+            >
+              Login
+            </button>
+          )}
         </div>
       </div>
     </nav>

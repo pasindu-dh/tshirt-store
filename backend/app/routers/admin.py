@@ -1,8 +1,7 @@
 """Admin catalog endpoints.
 
-TODO(Phase 2): these routes are intentionally unauthenticated for now so the
-catalog can be managed while authentication is being built. Every route in
-this module must require an admin user before deployment.
+Every route in this module requires a bearer token belonging to a user with
+the admin role (see `app.dependencies.require_admin`).
 """
 
 from typing import Literal
@@ -12,13 +11,18 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import require_admin
 from app.schemas.category import CategoryCreate, CategoryOut, CategoryUpdate
 from app.schemas.product import ProductCreate, ProductOut, ProductUpdate
 from app.services import catalog
 
 SortOption = Literal["newest", "price_asc", "price_desc", "name"]
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(
+    prefix="/admin",
+    tags=["admin"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 def _require_product(product_id: int, db: Session):
