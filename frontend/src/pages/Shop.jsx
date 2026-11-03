@@ -1,73 +1,84 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
 import InfiniteScroll from "react-infinite-scroll-component";
-import { Routes, Route, useNavigate } from "react-router-dom";
+import { getProducts } from "../api/products";
+import ProductCard from "../components/ProductCard";
 
-function Shop() {
+const PAGE_SIZE = 6;
+
+function Shop({ search }) {
   const [products, setProducts] = useState([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-
-  const fetchProducts = async () => {
-    try {
-      const res = await axios.get(
-        `http://127.0.0.1:8005/products?page=${page}`
-      );
-
-      const newProducts = res.data;
-
-      setProducts((prev) => [...prev, ...newProducts]);
-
-      if (newProducts.length === 0) {
-        setHasMore(false);
-      }
-
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    fetchProducts();
+    let cancelled = false;
+
+    getProducts({ page, limit: PAGE_SIZE })
+      .then((data) => {
+        if (cancelled) return;
+
+        setProducts((current) => [...current, ...data]);
+
+        if (data.length < PAGE_SIZE) {
+          setHasMore(false);
+        }
+
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+
+        setError("Could not load products. Is the backend running?");
+        setHasMore(false);
+        setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [page]);
 
-  const fetchMoreData = () => {
-    setPage((prev) => prev + 1);
-  };
+  const filteredProducts = products.filter((product) =>
+    product.name.toLowerCase().includes(search.toLowerCase())
+  );
 
-  // ✅ THIS WAS MISSING
   return (
-    <div className="min-h-screen px-10 pt-18 pb-20">
+    <div className="min-h-screen px-10 pt-10 pb-20">
+      <h1 className="text-4xl font-bold mb-10 text-center">Shop</h1>
 
-      {/* 🔥 GAP FIX HERE */}
-      <h1 className="text-4xl font-bold mt-10 mb-10 text-center scroll-mt-24">
-        Shop
-      </h1>
-
-      <InfiniteScroll
-        dataLength={products.length}
-        next={fetchMoreData}
-        hasMore={hasMore}
-        loader={<h4 className="text-center">Loading...</h4>}
-        endMessage={<p className="text-center">No more products</p>}
-      >
-        <div className="grid md:grid-cols-3 gap-8">
-          {products.map((p) => (
-            <div
-              key={p.id}
-              className="bg-[#020617] border border-gray-800 rounded-xl p-4"
-            >
-              <img
-                src={p.image}
-                className="h-60 w-full object-cover rounded"
-                alt={p.name}
-              />
-              <h3 className="mt-3 text-lg">{p.name}</h3>
-              <p className="text-gray-400">LKR {p.price}</p>
+      {loading ? (
+        <p className="text-center text-gray-400">Loading products...</p>
+      ) : error ? (
+        <p className="text-center text-red-400">{error}</p>
+      ) : (
+        <InfiniteScroll
+          dataLength={products.length}
+          next={() => setPage((current) => current + 1)}
+          hasMore={hasMore}
+          loader={<h4 className="text-center mt-6 text-gray-400">Loading...</h4>}
+          endMessage={
+            products.length > 0 ? (
+              <p className="text-center mt-10 text-gray-400">
+                You&apos;ve seen all products
+              </p>
+            ) : null
+          }
+        >
+          {filteredProducts.length === 0 ? (
+            <p className="text-center text-gray-400">
+              No products match &quot;{search}&quot; 😢
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {filteredProducts.map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
             </div>
-          ))}
-        </div>
-      </InfiniteScroll>
+          )}
+        </InfiniteScroll>
+      )}
     </div>
   );
 }

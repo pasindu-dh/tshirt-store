@@ -47,13 +47,15 @@ The backend serves the API and static images for the products.
    ```
 2. Install the required Python packages (it is recommended to use a virtual environment):
    ```bash
-   pip install fastapi uvicorn
+   pip install -r requirements.txt
    ```
 3. Run the backend server:
    ```bash
    uvicorn main:app --reload --port 8005
    ```
    *The backend will be available at `http://127.0.0.1:8005`. You can view the interactive API documentation at `http://127.0.0.1:8005/docs`.*
+
+   Allowed frontend origins default to `http://localhost:5173` and `http://127.0.0.1:5173`. Override them with the `FRONTEND_ORIGINS` environment variable (comma-separated).
 
 ### 2. Frontend Setup
 
@@ -67,7 +69,8 @@ The frontend runs on Vite and communicates with the FastAPI backend.
    ```bash
    npm install
    ```
-3. Start the Vite development server:
+3. (Optional) Copy `.env.example` to `.env` if your backend does not run on the default URL `http://127.0.0.1:8005`.
+4. Start the Vite development server:
    ```bash
    npm run dev
    ```
