@@ -1,8 +1,10 @@
+from datetime import date, datetime, time, timedelta
+
 from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models import Category, Order, Product, ProductVariant
+from app.models import Category, Coupon, Order, Product, ProductVariant
 from app.schemas.order import AdminOrderStatsOut, OrderStatusUpdate
 
 ALLOWED_TRANSITIONS = {
@@ -21,11 +23,26 @@ def list_orders(
     limit: int,
     status_filter: str | None = None,
     search: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> tuple[list[Order], int]:
     filters = []
 
     if status_filter:
         filters.append(Order.status == status_filter)
+
+    if date_from is not None:
+        filters.append(
+            Order.created_at >= datetime.combine(date_from, time.min)
+        )
+
+    if date_to is not None:
+        filters.append(
+            Order.created_at
+            < datetime.combine(
+                date_to + timedelta(days=1), time.min
+            )
+        )
 
     if search and search.strip():
         term_value = search.strip()
@@ -117,6 +134,16 @@ def update_status(
                     variant.stock += item.quantity
 
         order.payment_status = "cancelled"
+
+        if order.discount_code:
+            coupon = db.scalar(
+                select(Coupon)
+                .where(Coupon.code == order.discount_code)
+                .with_for_update()
+            )
+
+            if coupon is not None and coupon.used_count > 0:
+                coupon.used_count -= 1
     elif new_status == "delivered":
         order.payment_status = "paid"
 

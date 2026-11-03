@@ -8,7 +8,7 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
     app_name: str = "FURZY T-Shirt Store API"
-    app_version: str = "0.7.0"
+    app_version: str = "0.8.0"
 
     # Default to an absolute path so the database location never depends on CWD.
     database_url: str = f"sqlite:///{(BACKEND_DIR / 'store.db').as_posix()}"
@@ -27,6 +27,14 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
+
+    # SMTP order notifications. Leave SMTP_HOST empty to disable sending.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    smtp_use_tls: bool = True
 
     # Admin account managed by `python -m app.seed_admin`.
     # There are intentionally no default email/password values. Set

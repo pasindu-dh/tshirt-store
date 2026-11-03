@@ -16,6 +16,8 @@ os.environ["JWT_SECRET"] = "test-only-jwt-secret-" + "x" * 40
 os.environ["FRONTEND_ORIGINS"] = "http://127.0.0.1:5173"
 os.environ["SHIPPING_FEE_LKR"] = "350"
 os.environ["MAX_UPLOAD_BYTES"] = str(5 * 1024 * 1024)
+os.environ["SMTP_HOST"] = ""
+os.environ["SMTP_FROM_EMAIL"] = ""
 
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402

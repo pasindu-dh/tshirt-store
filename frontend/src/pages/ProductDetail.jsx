@@ -1,8 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { FiHeart } from "react-icons/fi";
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 import { imageUrl } from "../api/client";
 import { getProductBySlug } from "../api/products";
+import ProductReviews from "../components/ProductReviews";
+import useAuth from "../hooks/useAuth";
 import useCart from "../hooks/useCart";
+import useWishlist from "../hooks/useWishlist";
 import { getCartKey } from "../utils/cart";
 import { getApiError } from "../utils/errors";
 
@@ -22,6 +31,10 @@ function sortSizes(sizes) {
 
 function ProductDetail({ slug }) {
   const { cart, addToCart, openCart } = useCart();
+  const { user } = useAuth();
+  const { isWishlisted, toggleWishlist } = useWishlist();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -92,6 +105,7 @@ function ProductDetail({ slug }) {
     ) ?? null;
 
   const selectedVariant = findVariant(selectedColor, selectedSize);
+  const wished = product ? isWishlisted(product.id) : false;
   const cartItem =
     product && selectedVariant
       ? cart.find(
@@ -162,6 +176,25 @@ function ProductDetail({ slug }) {
       setMessageError(true);
     } finally {
       setAdding(false);
+    }
+  };
+
+  const handleWishlist = async () => {
+    if (!product) return;
+
+    if (!user) {
+      navigate("/login", { state: { from: location.pathname } });
+      return;
+    }
+
+    setMessage("");
+    setMessageError(false);
+
+    try {
+      await toggleWishlist(product);
+    } catch (error) {
+      setMessage(error.message || "Could not update your wishlist.");
+      setMessageError(true);
     }
   };
 
@@ -409,19 +442,43 @@ function ProductDetail({ slug }) {
               </p>
             )}
 
-            <button
-              type="button"
-              onClick={handleAddToCart}
-              disabled={buttonDisabled || adding}
-              className="mt-6 w-full bg-cyan-400 text-black py-3 rounded-lg font-semibold hover:bg-cyan-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {adding ? "Adding..." : buttonLabel}
-            </button>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={handleAddToCart}
+                disabled={buttonDisabled || adding}
+                className="flex-1 bg-cyan-400 text-black py-3 rounded-lg font-semibold hover:bg-cyan-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {adding ? "Adding..." : buttonLabel}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleWishlist}
+                aria-label={
+                  wished
+                    ? "Remove this product from your wishlist"
+                    : "Add this product to your wishlist"
+                }
+                aria-pressed={wished}
+                className={`px-4 rounded-lg border text-xl transition ${
+                  wished
+                    ? "border-red-500/60 bg-red-500/10 text-red-400"
+                    : "border-gray-700 text-gray-300 hover:border-red-400 hover:text-red-400"
+                }`}
+              >
+                <FiHeart fill={wished ? "currentColor" : "none"} />
+              </button>
+            </div>
 
             <p className="text-xs text-gray-500 mt-4">
               Secure checkout and delivery options will be available soon.
             </p>
           </div>
+        </div>
+
+        <div className="mt-14">
+          <ProductReviews productId={product.id} />
         </div>
       </div>
     </div>

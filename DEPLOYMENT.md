@@ -68,6 +68,11 @@ Run `python -m alembic upgrade head` before starting a new release/container.
 | `UPLOADS_DIR` | Directory on a persistent disk, for example `/var/data/uploads` |
 | `SHIPPING_FEE_LKR` | Optional checkout shipping fee |
 | `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Only needed for the one-time admin seed command |
+| `SMTP_HOST` | Optional SMTP server for order emails; leave blank to disable |
+| `SMTP_PORT` | SMTP port, commonly `587` |
+| `SMTP_USERNAME`, `SMTP_PASSWORD` | SMTP credentials, supplied through the host's secret manager |
+| `SMTP_FROM_EMAIL` | From address used for order notifications |
+| `SMTP_USE_TLS` | `true` for STARTTLS on port 587 |
 
 Generate the admin account once, after migrations:
 
@@ -82,6 +87,11 @@ separate release/run environments.
 
 Do not commit `backend/.env`. It is ignored by Git and must be supplied through
 the host's secret manager.
+
+Order confirmation and status emails are sent in the background after the
+database transaction succeeds. If SMTP is not configured, sending is skipped
+and logged; email failures never fail the order itself. Use an app-specific
+SMTP password rather than a mailbox password where the provider supports it.
 
 ### Uploads and multiple instances
 
@@ -170,13 +180,29 @@ Alternatively, `backend/.env` is read for the admin email/password when the
 `E2E_ADMIN_*` variables are not set. Never point the E2E test at the production
 database.
 
-## 6. Production security checklist
+## 6. Payments
+
+The application currently supports **Cash on Delivery** only. Before adding a
+card or wallet gateway, choose a provider that supports hosted checkout and
+server-side webhook verification. Never accept raw card details in this app.
+A gateway integration should:
+
+- create the payment intent server-side from the server-computed order total;
+- verify the webhook signature and mark the order paid idempotently;
+- handle failed/expired payments without decrementing stock twice;
+- store only provider references, never card data.
+
+That integration is intentionally not included without a provider account and
+its credentials.
+
+## 7. Production security checklist
 
 - [ ] Strong `JWT_SECRET` and a new admin password; no `.env` in Git.
 - [ ] `FRONTEND_ORIGINS` limited to the real frontend origin(s).
 - [ ] HTTPS enforced by the host; HSTS is sent for HTTPS requests.
 - [ ] Database backups and SSL enabled.
 - [ ] Uploads directory private to the app and backed up.
+- [ ] SMTP password stored as a secret; sender domain configured and tested.
 - [ ] Login rate limiting sized for your traffic or moved to Redis.
 - [ ] Admin account verified with `python -m app.seed_admin` validation rules.
 - [ ] Dependencies updated and `npm audit` / `pip-audit` reviewed.

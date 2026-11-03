@@ -1,7 +1,18 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import ProductCard from "./ProductCard";
+
+vi.mock("../hooks/useAuth", () => ({
+  default: () => ({ user: null }),
+}));
+
+vi.mock("../hooks/useWishlist", () => ({
+  default: () => ({
+    isWishlisted: () => false,
+    toggleWishlist: vi.fn(),
+  }),
+}));
 
 function renderCard(product) {
   return render(
@@ -27,6 +38,11 @@ describe("ProductCard", () => {
     expect(screen.getByText("LKR 2500")).toBeInTheDocument();
     expect(screen.getByText("T-Shirts")).toBeInTheDocument();
     expect(screen.queryByText("Out of stock")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Add Aurora Tee to wishlist",
+      })
+    ).toBeInTheDocument();
     expect(
       screen.getAllByRole("link", { name: /Aurora Tee|View product/ })[0]
     ).toHaveAttribute("href", "/product/aurora-tee");

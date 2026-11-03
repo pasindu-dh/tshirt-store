@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  FiHeart,
   FiLogOut,
   FiMenu,
   FiPackage,
@@ -10,6 +11,7 @@ import {
 import { useLocation, useNavigate } from "react-router-dom";
 import useAuth from "../hooks/useAuth";
 import useCart from "../hooks/useCart";
+import useWishlist from "../hooks/useWishlist";
 
 const primaryLinks = [
   { label: "Home", path: "/" },
@@ -23,6 +25,7 @@ function Navbar({ search, setSearch }) {
   const location = useLocation();
   const { cartCount, openCart } = useCart();
   const { user, isAdmin, logout } = useAuth();
+  const { wishlistCount } = useWishlist();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const closeMobile = () => setMobileOpen(false);
@@ -147,6 +150,20 @@ function Navbar({ search, setSearch }) {
                 <FiPackage />
               </button>
 
+              <button
+                type="button"
+                onClick={() => navigateTo("/wishlist")}
+                aria-label="My wishlist"
+                className="relative text-xl text-gray-300 hover:text-red-400 transition"
+              >
+                <FiHeart />
+                {wishlistCount > 0 && (
+                  <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
+                    {wishlistCount}
+                  </span>
+                )}
+              </button>
+
               <span className="hidden xl:block max-w-[140px] truncate text-sm text-gray-300">
                 {user.name}
               </span>
@@ -226,6 +243,16 @@ function Navbar({ search, setSearch }) {
                 className="text-left px-3 py-2 rounded-lg hover:bg-white/5 hover:text-cyan-400"
               >
                 My orders
+              </button>
+            )}
+
+            {user && (
+              <button
+                type="button"
+                onClick={() => navigateTo("/wishlist")}
+                className="text-left px-3 py-2 rounded-lg hover:bg-white/5 hover:text-red-400"
+              >
+                My wishlist
               </button>
             )}
 

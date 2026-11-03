@@ -14,6 +14,7 @@ class OrderCreate(BaseModel):
     country: str = Field(default="Sri Lanka", min_length=2, max_length=100)
     notes: str = Field(default="", max_length=500)
     payment_method: Literal["cod"] = "cod"
+    coupon_code: str = Field(default="", max_length=40)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -42,6 +43,8 @@ class OrderOut(BaseModel):
     payment_status: str
     subtotal: int
     shipping_fee: int
+    discount_code: str
+    discount_amount: int
     total: int
     contact_name: str
     contact_email: str

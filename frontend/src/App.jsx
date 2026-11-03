@@ -19,7 +19,9 @@ const Orders = lazy(() => import("./pages/Orders"));
 const ProductDetail = lazy(() => import("./pages/ProductDetail"));
 const Register = lazy(() => import("./pages/Register"));
 const Shop = lazy(() => import("./pages/Shop"));
+const Wishlist = lazy(() => import("./pages/Wishlist"));
 const AdminCategories = lazy(() => import("./pages/admin/AdminCategories"));
+const AdminCoupons = lazy(() => import("./pages/admin/AdminCoupons"));
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
 const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
 const AdminOrderDetail = lazy(
@@ -90,6 +92,14 @@ function App() {
                 }
               />
               <Route
+                path="/wishlist"
+                element={
+                  <ProtectedRoute>
+                    <Wishlist />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/orders/:orderId"
                 element={
                   <ProtectedRoute>
@@ -121,6 +131,7 @@ function App() {
                   element={<AdminProductForm />}
                 />
                 <Route path="categories" element={<AdminCategories />} />
+                <Route path="coupons" element={<AdminCoupons />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

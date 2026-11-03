@@ -18,6 +18,12 @@ vi.mock("../hooks/useCart", () => ({
   }),
 }));
 
+vi.mock("../hooks/useWishlist", () => ({
+  default: () => ({
+    wishlistCount: 0,
+  }),
+}));
+
 function renderNavbar() {
   return render(
     <MemoryRouter>

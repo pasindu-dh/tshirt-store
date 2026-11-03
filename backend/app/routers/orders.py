@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -6,6 +6,7 @@ from app.dependencies import get_current_user
 from app.models import User
 from app.schemas.order import OrderCreate, OrderOut
 from app.services import orders as order_service
+from app.services.email import send_order_confirmation
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -17,17 +18,28 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 )
 def create_order(
     payload: OrderCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:
-        return order_service.create_order(db, current_user, payload)
+        order = order_service.create_order(db, current_user, payload)
     except HTTPException:
         db.rollback()
         raise
     except Exception:
         db.rollback()
         raise
+
+    background_tasks.add_task(
+        send_order_confirmation,
+        order.contact_email,
+        order.id,
+        order.contact_name,
+        order.total,
+    )
+
+    return order
 
 
 @router.get("", response_model=list[OrderOut])

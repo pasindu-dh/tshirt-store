@@ -1,7 +1,9 @@
+from datetime import date
 from typing import Literal
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     HTTPException,
     Query,
@@ -14,6 +16,7 @@ from app.database import get_db
 from app.dependencies import require_admin
 from app.schemas.order import OrderOut, OrderStatusUpdate
 from app.services import admin_orders
+from app.services.email import send_order_status_update
 
 OrderStatusFilter = Literal[
     "pending",
@@ -39,6 +42,8 @@ def list_orders(
         None, alias="status"
     ),
     search: str | None = Query(None, max_length=100),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     db: Session = Depends(get_db),
 ):
     orders, total = admin_orders.list_orders(
@@ -47,6 +52,8 @@ def list_orders(
         limit=limit,
         status_filter=status_filter,
         search=search,
+        date_from=date_from,
+        date_to=date_to,
     )
     response.headers["X-Total-Count"] = str(total)
     return orders
@@ -69,6 +76,7 @@ def get_order(order_id: int, db: Session = Depends(get_db)):
 def update_order_status(
     order_id: int,
     payload: OrderStatusUpdate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     order = admin_orders.get_order(db, order_id)
@@ -80,10 +88,19 @@ def update_order_status(
         )
 
     try:
-        return admin_orders.update_status(db, order, payload)
+        updated = admin_orders.update_status(db, order, payload)
     except HTTPException:
         db.rollback()
         raise
     except Exception:
         db.rollback()
         raise
+
+    background_tasks.add_task(
+        send_order_status_update,
+        updated.contact_email,
+        updated.id,
+        updated.status,
+    )
+
+    return updated

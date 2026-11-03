@@ -229,6 +229,17 @@ function AdminOrderDetail({ orderId }) {
                 <span>Subtotal</span>
                 <span>LKR {order.subtotal}</span>
               </div>
+              {order.discount_amount > 0 && (
+                <div className="flex justify-between text-green-400">
+                  <span>
+                    Discount
+                    {order.discount_code
+                      ? ` (${order.discount_code})`
+                      : ""}
+                  </span>
+                  <span>- LKR {order.discount_amount}</span>
+                </div>
+              )}
               <div className="flex justify-between text-gray-300">
                 <span>Shipping</span>
                 <span>LKR {order.shipping_fee}</span>

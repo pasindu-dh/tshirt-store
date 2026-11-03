@@ -1,15 +1,58 @@
-import { Link } from "react-router-dom";
+import { FiHeart } from "react-icons/fi";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { imageUrl } from "../api/client";
+import useAuth from "../hooks/useAuth";
+import useWishlist from "../hooks/useWishlist";
 
 function ProductCard({ product }) {
+  const { user } = useAuth();
+  const { isWishlisted, toggleWishlist } = useWishlist();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const wished = isWishlisted(product.id);
+
   const totalStock = product.variants.reduce(
     (sum, variant) => sum + variant.stock,
     0
   );
   const outOfStock = totalStock === 0;
 
+  const handleWishlist = async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!user) {
+      navigate("/login", { state: { from: location.pathname } });
+      return;
+    }
+
+    try {
+      await toggleWishlist(product);
+    } catch {
+      // The wishlist provider exposes the error to the wishlist page.
+    }
+  };
+
   return (
-    <div className="bg-[#111827] rounded-2xl overflow-hidden hover:scale-105 hover:shadow-xl transition duration-300">
+    <div className="relative bg-[#111827] rounded-2xl overflow-hidden hover:scale-105 hover:shadow-xl transition duration-300">
+      <button
+        type="button"
+        onClick={handleWishlist}
+        aria-label={
+          wished
+            ? `Remove ${product.name} from wishlist`
+            : `Add ${product.name} to wishlist`
+        }
+        aria-pressed={wished}
+        className={`absolute top-3 right-3 z-10 rounded-full p-2 text-lg backdrop-blur-md transition ${
+          wished
+            ? "bg-red-500/20 text-red-400"
+            : "bg-black/50 text-white hover:text-red-400"
+        }`}
+      >
+        <FiHeart fill={wished ? "currentColor" : "none"} />
+      </button>
+
       <Link
         to={`/product/${product.slug}`}
         aria-label={`View ${product.name}`}

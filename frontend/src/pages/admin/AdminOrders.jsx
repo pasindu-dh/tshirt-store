@@ -30,6 +30,8 @@ function AdminOrders() {
   const [appliedSearch, setAppliedSearch] = useState("");
   const appliedSearchRef = useRef("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
@@ -63,6 +65,8 @@ function AdminOrders() {
       limit: PAGE_SIZE,
       search: appliedSearch || undefined,
       status: statusFilter || undefined,
+      date_from: dateFrom || undefined,
+      date_to: dateTo || undefined,
     })
       .then((result) => {
         if (cancelled) return;
@@ -85,10 +89,15 @@ function AdminOrders() {
     return () => {
       cancelled = true;
     };
-  }, [page, appliedSearch, statusFilter, refreshKey]);
+  }, [page, appliedSearch, statusFilter, dateFrom, dateTo, refreshKey]);
 
   const handleStatusChange = (event) => {
     setStatusFilter(event.target.value);
+    resetResults();
+  };
+
+  const handleDateChange = (setter) => (event) => {
+    setter(event.target.value);
     resetResults();
   };
 
@@ -137,6 +146,22 @@ function AdminOrders() {
             </option>
           ))}
         </select>
+
+        <input
+          type="date"
+          value={dateFrom}
+          onChange={handleDateChange(setDateFrom)}
+          aria-label="Orders from date"
+          className="p-3 rounded-lg bg-[#020617] border border-gray-700 outline-none focus:border-cyan-400"
+        />
+
+        <input
+          type="date"
+          value={dateTo}
+          onChange={handleDateChange(setDateTo)}
+          aria-label="Orders to date"
+          className="p-3 rounded-lg bg-[#020617] border border-gray-700 outline-none focus:border-cyan-400"
+        />
       </div>
 
       {error ? (

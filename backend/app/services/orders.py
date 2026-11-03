@@ -12,6 +12,7 @@ from app.models import (
     User,
 )
 from app.schemas.order import OrderCreate
+from app.services import coupons as coupon_service
 
 
 def get_orders(db: Session, user_id: int) -> list[Order]:
@@ -94,8 +95,19 @@ def create_order(
         variants_by_id[item.variant_id].product.price * item.quantity
         for item in cart_items
     )
+    coupon = None
+    discount_amount = 0
+
+    if payload.coupon_code.strip():
+        coupon = coupon_service.validate_coupon(
+            db, payload.coupon_code, subtotal, lock=True
+        )
+        discount_amount = coupon_service.calculate_discount(
+            coupon, subtotal
+        )
+
     shipping_fee = settings.shipping_fee_lkr
-    total = subtotal + shipping_fee
+    total = subtotal - discount_amount + shipping_fee
 
     order = Order(
         user_id=user.id,
@@ -104,6 +116,8 @@ def create_order(
         payment_status="pending",
         subtotal=subtotal,
         shipping_fee=shipping_fee,
+        discount_code=coupon.code if coupon is not None else "",
+        discount_amount=discount_amount,
         total=total,
         contact_name=payload.contact_name,
         contact_email=user.email,
@@ -140,6 +154,9 @@ def create_order(
         db.delete(item)
 
     db.add(order)
+
+    if coupon is not None:
+        coupon.used_count += 1
 
     try:
         db.commit()

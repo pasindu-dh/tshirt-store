@@ -32,6 +32,10 @@ function AdminLayout() {
           Categories
         </NavLink>
 
+        <NavLink to="/admin/coupons" className={tabClass}>
+          Coupons
+        </NavLink>
+
         <NavLink
           to="/shop"
           className="px-4 py-2 rounded-lg text-sm font-semibold border border-gray-700 text-gray-300 hover:border-cyan-400 hover:text-cyan-400 transition"

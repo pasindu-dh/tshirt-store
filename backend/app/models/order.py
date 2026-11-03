@@ -24,6 +24,12 @@ class Order(Base):
     )
     subtotal: Mapped[int] = mapped_column(Integer)
     shipping_fee: Mapped[int] = mapped_column(Integer, default=0)
+    discount_code: Mapped[str] = mapped_column(
+        String(40), default="", server_default=""
+    )
+    discount_amount: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0"
+    )
     total: Mapped[int] = mapped_column(Integer)
 
     contact_name: Mapped[str] = mapped_column(String(120))

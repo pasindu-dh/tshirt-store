@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { imageUrl } from "../api/client";
+import { previewCoupon } from "../api/coupons";
 import { createOrder } from "../api/orders";
 import useAuth from "../hooks/useAuth";
 import useCart from "../hooks/useCart";
@@ -31,9 +32,44 @@ function Checkout() {
   });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [couponCode, setCouponCode] = useState("");
+  const [coupon, setCoupon] = useState(null);
+  const [couponError, setCouponError] = useState("");
+  const [couponLoading, setCouponLoading] = useState(false);
 
   const updateField = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const applyCoupon = async () => {
+    const code = couponCode.trim();
+
+    if (!code) {
+      setCouponError("Enter a coupon code.");
+      return;
+    }
+
+    setCouponLoading(true);
+    setCouponError("");
+
+    try {
+      const data = await previewCoupon(code);
+      setCoupon(data);
+      setCouponCode(data.code);
+    } catch (requestError) {
+      setCoupon(null);
+      setCouponError(
+        getApiError(requestError, "Could not apply this coupon.")
+      );
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const removeCoupon = () => {
+    setCoupon(null);
+    setCouponCode("");
+    setCouponError("");
   };
 
   const handleSubmit = async (event) => {
@@ -42,7 +78,10 @@ function Checkout() {
     setSubmitting(true);
 
     try {
-      const order = await createOrder(form);
+      const order = await createOrder({
+        ...form,
+        coupon_code: coupon?.code ?? "",
+      });
 
       try {
         await clearCart();
@@ -87,6 +126,10 @@ function Checkout() {
   const inputClass =
     "mt-1 w-full p-3 rounded-lg bg-black border border-gray-700 outline-none focus:border-cyan-400";
   const labelClass = "block";
+  const summarySubtotal = coupon?.subtotal ?? cartTotal;
+  const summaryShipping = coupon?.shipping_fee ?? shippingFee;
+  const summaryTotal = coupon?.total ?? grandTotal;
+  const discountAmount = coupon?.discount_amount ?? 0;
 
   return (
     <div className="min-h-screen px-6 md:px-10 pb-20 pt-10">
@@ -302,19 +345,74 @@ function Checkout() {
 
             <hr className="border-gray-800" />
 
-            <div className="flex justify-between text-sm text-gray-300">
-              <span>Subtotal</span>
-              <span>LKR {cartTotal}</span>
+            <div className="space-y-2">
+              <label
+                htmlFor="coupon-code"
+                className="text-sm text-gray-300"
+              >
+                Coupon code
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="coupon-code"
+                  value={couponCode}
+                  onChange={(event) =>
+                    setCouponCode(event.target.value)
+                  }
+                  disabled={Boolean(coupon) || couponLoading}
+                  placeholder="Enter code"
+                  className="min-w-0 flex-1 p-2 rounded-lg bg-black border border-gray-700 outline-none focus:border-cyan-400 disabled:opacity-60"
+                />
+                {coupon ? (
+                  <button
+                    type="button"
+                    onClick={removeCoupon}
+                    className="px-3 py-2 rounded-lg border border-gray-700 text-sm text-gray-300 hover:border-red-400 hover:text-red-400"
+                  >
+                    Remove
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={applyCoupon}
+                    disabled={couponLoading}
+                    className="px-3 py-2 rounded-lg bg-cyan-400 text-sm font-semibold text-black hover:bg-cyan-300 disabled:opacity-50"
+                  >
+                    {couponLoading ? "Checking..." : "Apply"}
+                  </button>
+                )}
+              </div>
+              {couponError && (
+                <p className="text-xs text-red-400">{couponError}</p>
+              )}
+              {coupon && (
+                <p className="text-xs text-green-400">
+                  {coupon.code} applied
+                  {coupon.description ? ` — ${coupon.description}` : ""}
+                </p>
+              )}
             </div>
 
             <div className="flex justify-between text-sm text-gray-300">
+              <span>Subtotal</span>
+              <span>LKR {summarySubtotal}</span>
+            </div>
+
+            {discountAmount > 0 && (
+              <div className="flex justify-between text-sm text-green-400">
+                <span>Discount ({coupon.code})</span>
+                <span>- LKR {discountAmount}</span>
+              </div>
+            )}
+
+            <div className="flex justify-between text-sm text-gray-300">
               <span>Shipping</span>
-              <span>LKR {shippingFee}</span>
+              <span>LKR {summaryShipping}</span>
             </div>
 
             <div className="flex justify-between text-lg font-semibold">
               <span>Total</span>
-              <span className="text-cyan-400">LKR {grandTotal}</span>
+              <span className="text-cyan-400">LKR {summaryTotal}</span>
             </div>
 
             <button

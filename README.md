@@ -23,6 +23,7 @@ A full-stack web application featuring an interactive React frontend and a robus
 - **psycopg 3** (PostgreSQL driver for production)
 - **Uvicorn** (ASGI server)
 - **StaticFiles** (Local image serving)
+- **SMTP** (Optional order confirmation/status emails via the standard library)
 - **CORS Middleware** (Configured to allow frontend connections)
 - **pytest + FastAPI TestClient** (Backend test suite)
 
@@ -39,7 +40,7 @@ tshirt-store/
 │   │   ├── models/       # SQLAlchemy models
 │   │   ├── schemas/      # Pydantic request/response schemas
 │   │   ├── routers/      # Public and admin API routes
-│   │   ├── services/     # Catalog, cart, and order business logic
+│   │   ├── services/     # Catalog, cart, order, coupon, review, and email logic
 │   │   ├── utils/        # Slug helpers
 │   │   ├── security.py   # Password hashing and JWT helpers
 │   │   ├── rate_limit.py # Failed-login rate limiter
@@ -61,7 +62,7 @@ tshirt-store/
 │   ├── src/              # React components, pages, API client, context
 │   │   ├── test/         # Vitest setup
 │   │   ├── utils/        # Cart and error helpers
-│   │   └── pages/admin/  # Admin dashboard, products, and categories
+│   │   └── pages/admin/  # Dashboard, orders, products, categories, and coupons
 │   ├── package.json
 │   ├── playwright.config.js
 │   └── vite.config.js
@@ -129,7 +130,7 @@ The frontend runs on Vite and communicates with the FastAPI backend.
    ```
    *The terminal will output the local URL (usually `http://localhost:5173`) where you can view the application.*
 
-   Frontend routes: `/` (home), `/shop`, `/product/:slug`, `/about`, `/contact`, `/login`, `/register`, `/forbidden`, `/checkout` (signed-in), `/orders` and `/orders/:orderId` (signed-in), and the admin area (`/admin`, `/admin/orders`, `/admin/orders/:orderId`, `/admin/products`, `/admin/products/new`, `/admin/products/:id/edit`, `/admin/categories`). The admin area requires the `admin` role.
+   Frontend routes: `/` (home), `/shop`, `/product/:slug`, `/about`, `/contact`, `/login`, `/register`, `/forbidden`, `/checkout` (signed-in), `/orders` and `/orders/:orderId` (signed-in), `/wishlist` (signed-in), and the admin area (`/admin`, `/admin/orders`, `/admin/orders/:orderId`, `/admin/products`, `/admin/products/new`, `/admin/products/:id/edit`, `/admin/categories`, `/admin/coupons`). The admin area requires the `admin` role.
 
 ## 🔗 API Endpoints
 
@@ -164,9 +165,24 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 ### Orders (authenticated)
 > Requires a bearer token. Prices, shipping, and totals are computed server-side from the database, and stock is revalidated at checkout.
 
-- `POST /orders`: Place an order from the server cart using the supplied contact/shipping details and `payment_method: "cod"`. Stock is decremented, line items are snapshotted, and the cart is cleared in one transaction.
+- `POST /orders`: Place an order from the server cart using the supplied contact/shipping details and `payment_method: "cod"`. An optional `coupon_code` applies a server-validated discount. Stock is decremented, line items are snapshotted, and the cart is cleared in one transaction.
 - `GET /orders`: The signed-in customer's orders, newest first.
 - `GET /orders/{id}`: One of the signed-in customer's orders.
+
+### Reviews
+- `GET /reviews/product/{id}`: Public review list with count and average rating for an active product.
+- `POST /reviews/product/{id}`: Create the signed-in customer's review (`rating` 1–5, optional `title`/`comment`); one review per customer per product.
+- `PUT /reviews/{id}`: Edit your own review.
+- `DELETE /reviews/{id}`: Delete your own review; admins can delete any review for moderation.
+
+### Wishlist (authenticated)
+- `GET /wishlist`: The signed-in customer's saved products.
+- `PUT /wishlist/items/{product_id}`: Save an active product (idempotent).
+- `DELETE /wishlist/items/{product_id}`: Remove a saved product.
+
+### Coupons
+- `POST /coupons/preview`: Authenticated preview of a coupon against the server cart. Returns the discount and recalculated totals without consuming usage.
+- Admin coupon CRUD is under `/admin/coupons`; see the Admin section.
 
 ### Admin
 > All admin endpoints require `Authorization: Bearer <access_token>` for a user with the `admin` role. Requests without a token return `401`; customer tokens return `403`.
@@ -180,31 +196,33 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 - `POST /admin/categories`: Create a category.
 - `PUT /admin/categories/{id}`: Rename a category.
 - `DELETE /admin/categories/{id}`: Delete an empty category.
-- `GET /admin/orders`: Paginated order list with optional `status` and `search` filters; returns `X-Total-Count`.
+- `GET /admin/orders`: Paginated order list with optional `status`, `search`, `date_from`, and `date_to` filters; returns `X-Total-Count`.
 - `GET /admin/orders/{id}`: Full order detail for any customer order.
-- `PATCH /admin/orders/{id}/status`: Advance an order through `pending → confirmed → shipped → delivered`, or cancel from `pending`/`confirmed`. Cancelling restores reserved stock; delivering marks COD payment as paid.
+- `PATCH /admin/orders/{id}/status`: Advance an order through `pending → confirmed → shipped → delivered`, or cancel from `pending`/`confirmed`. Cancelling restores reserved stock and coupon usage; delivering marks COD payment as paid. Status changes send an email when SMTP is configured.
 - `GET /admin/stats`: Dashboard aggregates — revenue from delivered orders, open/pending/delivered/cancelled counts, low-stock variants, and product/category totals.
+- `GET/POST /admin/coupons` and `PUT/DELETE /admin/coupons/{id}`: Manage percentage or fixed-amount coupons with minimum subtotals, usage limits, active windows, and active/inactive state.
 
 ## 🛍️ Admin Panel
 
 Sign in at `/login` with an admin account to manage the store:
 
 - **Dashboard**: delivered revenue, open/pending orders, low-stock variants, order/product/category counts, and quick actions.
-- **Orders**: search by order number/customer, filter by status, paginate, and open order details.
-- **Order detail**: review customer/shipping/payment details, items, totals, and notes; confirm, ship, deliver, or cancel orders. Cancelling restores stock, and delivering marks COD as paid.
+- **Orders**: search by order number/customer, filter by status and date range, paginate, and open order details.
+- **Order detail**: review customer/shipping/payment details, items, totals, discounts, and notes; confirm, ship, deliver, or cancel orders. Cancelling restores stock and coupon usage, and delivering marks COD as paid.
 - **Products**: search/filter/paginate, activate or deactivate, delete, and edit.
 - **Product editor**: upload images (choose a primary image), set price, category and visibility, and manage size/color/SKU/stock variants.
 - **Categories**: create, rename, and delete categories (a category with products cannot be deleted).
+- **Coupons**: create percentage or fixed-amount coupons with minimum subtotals, usage limits, start/expiry windows, and active state; edit or delete them.
 - Active products created in the admin panel appear on the storefront immediately.
 
 ## 🛒 Storefront
 
 - **Shop** uses server-side search, category filtering, price/name sorting, and paginated infinite scrolling.
-- Product cards open a product detail page at `/product/:slug`.
-- The detail page includes an image gallery, color and size selection, live stock status, and a stock-aware add-to-cart button.
+- Product cards open a product detail page at `/product/:slug` and include a wishlist heart.
+- The detail page includes an image gallery, color and size selection, live stock status, a stock-aware add-to-cart button, a wishlist toggle, and customer reviews with average ratings and one-review-per-customer editing.
 - Guests keep their cart in localStorage; after login or registration it is merged into the server-side cart. Signed-in customers keep their cart across sessions and devices. Expired access tokens are refreshed automatically.
-- Checkout requires an account, validates prices and stock server-side, and currently supports **Cash on Delivery**. A flat shipping fee of LKR 350 is applied by default (configurable with `SHIPPING_FEE_LKR`).
-- After ordering, customers see a confirmation and can review their orders at `/orders`.
+- Checkout requires an account, validates prices and stock server-side, supports **Cash on Delivery**, and accepts server-validated coupons. A flat shipping fee of LKR 350 is applied by default (configurable with `SHIPPING_FEE_LKR`). Card/wallet payments require a provider-hosted checkout and webhook integration, which is not configured.
+- After ordering, customers see a confirmation and can review their orders at `/orders`. A confirmation email and status-update emails are sent when SMTP is configured.
 
 ## 🧪 Testing
 
@@ -218,7 +236,7 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-Coverage includes authentication and role guards, login rate limiting, catalog filters and slug lookup, cart stock caps and guest-cart merging, transactional order creation and stock decrement, admin status transitions and cancellation restock, dashboard stats, upload validation, security headers, and CORS.
+Coverage includes authentication and role guards, login rate limiting, catalog filters and slug lookup, cart stock caps and guest-cart merging, transactional order creation and stock decrement, coupon previews/discounts/usage rules, admin status transitions and cancellation restock, dashboard stats, reviews, wishlist privacy, upload validation, security headers, CORS, and order date filters.
 
 ### Frontend
 
@@ -231,7 +249,7 @@ npm run build
 
 ### End-to-end
 
-The Playwright test drives a full guest-cart → login → checkout → order → history journey and verifies that the access-token refresh interceptor recovers from an expired token. It needs a running backend with an admin account.
+The Playwright test drives a full guest-cart → login → checkout → coupon → order → review → wishlist → history journey and verifies that the access-token refresh interceptor recovers from an expired token. It needs a running backend with an admin account.
 
 ```bash
 cd frontend
