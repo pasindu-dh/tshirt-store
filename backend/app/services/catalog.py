@@ -101,9 +101,19 @@ def update_product(
         setattr(product, field, value)
 
     if "images" in payload.model_fields_set:
-        product.images = _build_images(payload.images or [])
+        new_urls = payload.images or []
+
+        if [image.url for image in product.images] != new_urls:
+            product.images = _build_images(new_urls)
+
     if "variants" in payload.model_fields_set:
-        product.variants = _build_variants(payload.variants or [])
+        new_variants = payload.variants or []
+
+        if not _variants_equal(product.variants, new_variants):
+            # Delete the old rows first so their SKUs can be reused.
+            product.variants = []
+            db.flush()
+            product.variants = _build_variants(new_variants)
 
     db.commit()
 
@@ -162,3 +172,18 @@ def _build_variants(variants: list[ProductVariantIn]) -> list[ProductVariant]:
         )
         for variant in variants
     ]
+
+
+def _variants_equal(
+    existing: Sequence[ProductVariant],
+    incoming: list[ProductVariantIn],
+) -> bool:
+    existing_values = sorted(
+        (variant.size, variant.color, variant.sku, variant.stock)
+        for variant in existing
+    )
+    incoming_values = sorted(
+        (variant.size, variant.color, variant.sku, variant.stock)
+        for variant in incoming
+    )
+    return existing_values == incoming_values

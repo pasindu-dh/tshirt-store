@@ -8,10 +8,14 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
     app_name: str = "FURZY T-Shirt Store API"
-    app_version: str = "0.3.0"
+    app_version: str = "0.4.0"
 
     # Default to an absolute path so the database location never depends on CWD.
     database_url: str = f"sqlite:///{(BACKEND_DIR / 'store.db').as_posix()}"
+
+    # Uploaded product images.
+    uploads_dir: str = str(BACKEND_DIR / "uploads")
+    max_upload_bytes: int = 5 * 1024 * 1024
 
     frontend_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
@@ -21,10 +25,13 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
 
-    # Development admin account created by `python -m app.seed_admin`.
+    # Admin account managed by `python -m app.seed_admin`.
+    # There are intentionally no default email/password values. Set
+    # ADMIN_EMAIL and ADMIN_PASSWORD in backend/.env; seed_admin refuses
+    # to run with missing, invalid, or known default/placeholder values.
     admin_name: str = "Store Admin"
-    admin_email: str = "admin@furzy.local"
-    admin_password: str = "ChangeMe123!"
+    admin_email: str = ""
+    admin_password: str = ""
 
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",

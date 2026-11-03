@@ -44,12 +44,14 @@ tshirt-store/
 │   │   └── seed_admin.py # Development admin account seed script
 │   ├── alembic/          # Database migrations
 │   ├── images/           # Static product images served by the backend
+│   ├── uploads/          # Uploaded product images (runtime, git-ignored)
 │   ├── main.py           # Entry point for `uvicorn main:app`
 │   └── requirements.txt
 │
 └── frontend/             # React/Vite frontend application
     ├── public/
     ├── src/              # React components, pages, API client, context
+    │   └── pages/admin/  # Admin dashboard, products, and categories
     ├── package.json
     └── vite.config.js
 ```
@@ -77,11 +79,11 @@ The backend serves the API and static images for the products.
    python -m app.seed
    ```
    Use `python -m app.seed --reset` to wipe the catalog and seed it again.
-5. Create the development admin account:
+5. Create or update the admin account:
    ```bash
    python -m app.seed_admin
    ```
-   The default credentials are `admin@furzy.local` / `ChangeMe123!`. Override `ADMIN_NAME`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` in `backend/.env` before running the script — and always change them before deploying.
+   The script reads `ADMIN_NAME`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` from `backend/.env`. Set these values before running it — the committed `.env.example` contains placeholders only. `ADMIN_PASSWORD` must be at least 8 characters. The script refuses to run when the email or password is missing, invalid, or set to a known default or placeholder value, and it will not create a default development admin automatically. Never commit `backend/.env` or real credentials.
 6. Run the backend server:
    ```bash
    uvicorn main:app --reload --port 8005
@@ -89,6 +91,8 @@ The backend serves the API and static images for the products.
    *The backend will be available at `http://127.0.0.1:8005`. You can view the interactive API documentation at `http://127.0.0.1:8005/docs`.*
 
    Allowed frontend origins default to `http://localhost:5173` and `http://127.0.0.1:5173`. Override them with the `FRONTEND_ORIGINS` environment variable (comma-separated). See `backend/.env.example` for all options. The SQLite database lives at `backend/store.db` and is git-ignored.
+
+   Product images uploaded through the admin panel are stored in `backend/uploads/` (created automatically and git-ignored) and served from `/uploads`.
 
 ### 2. Frontend Setup
 
@@ -109,7 +113,7 @@ The frontend runs on Vite and communicates with the FastAPI backend.
    ```
    *The terminal will output the local URL (usually `http://localhost:5173`) where you can view the application.*
 
-   Frontend routes: `/` (home), `/shop`, `/about`, `/contact`, `/checkout`, `/login`, `/register`, `/forbidden`, and `/admin` (admin role only).
+   Frontend routes: `/` (home), `/shop`, `/about`, `/contact`, `/checkout`, `/login`, `/register`, `/forbidden`, and the admin area (`/admin`, `/admin/products`, `/admin/products/new`, `/admin/products/:id/edit`, `/admin/categories`). The admin area requires the `admin` role.
 
 ## 🔗 API Endpoints
 
@@ -132,9 +136,21 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 > All admin endpoints require `Authorization: Bearer <access_token>` for a user with the `admin` role. Requests without a token return `401`; customer tokens return `403`.
 
 - `GET /admin/products`: Product list including inactive products.
+- `GET /admin/products/{id}`: Full product detail, including inactive products.
 - `POST /admin/products`: Create a product with images and size variants.
 - `PUT /admin/products/{id}`: Update a product, its images, or its variants.
 - `DELETE /admin/products/{id}`: Delete a product.
+- `POST /admin/uploads`: Upload a product image using multipart form data (`file` field). Accepts JPEG, PNG, and WebP up to 5 MB; returns `{ "url": "/uploads/<filename>" }`.
 - `POST /admin/categories`: Create a category.
 - `PUT /admin/categories/{id}`: Rename a category.
 - `DELETE /admin/categories/{id}`: Delete an empty category.
+
+## 🛍️ Admin Panel
+
+Sign in at `/login` with an admin account to manage the store:
+
+- **Dashboard**: catalog totals, active products, low-stock variants, and category count.
+- **Products**: search/filter/paginate, activate or deactivate, delete, and edit.
+- **Product editor**: upload images (choose a primary image), set price, category and visibility, and manage size/color/SKU/stock variants.
+- **Categories**: create, rename, and delete categories (a category with products cannot be deleted).
+- Active products created in the admin panel appear on the storefront immediately.

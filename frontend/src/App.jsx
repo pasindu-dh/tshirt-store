@@ -5,7 +5,6 @@ import Navbar from "./components/Navbar";
 import ParticleBackground from "./components/ParticleBackground";
 import ProtectedRoute from "./components/ProtectedRoute";
 import About from "./pages/About";
-import AdminDashboard from "./pages/AdminDashboard";
 import Checkout from "./pages/Checkout";
 import Contact from "./pages/Contact";
 import Forbidden from "./pages/Forbidden";
@@ -14,6 +13,11 @@ import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 import Register from "./pages/Register";
 import Shop from "./pages/Shop";
+import AdminCategories from "./pages/admin/AdminCategories";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminLayout from "./pages/admin/AdminLayout";
+import AdminProductForm from "./pages/admin/AdminProductForm";
+import AdminProducts from "./pages/admin/AdminProducts";
 
 function App() {
   const [search, setSearch] = useState("");
@@ -39,10 +43,19 @@ function App() {
             path="/admin"
             element={
               <ProtectedRoute adminOnly>
-                <AdminDashboard />
+                <AdminLayout />
               </ProtectedRoute>
             }
-          />
+          >
+            <Route index element={<AdminDashboard />} />
+            <Route path="products" element={<AdminProducts />} />
+            <Route path="products/new" element={<AdminProductForm />} />
+            <Route
+              path="products/:productId/edit"
+              element={<AdminProductForm />}
+            />
+            <Route path="categories" element={<AdminCategories />} />
+          </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
       </div>

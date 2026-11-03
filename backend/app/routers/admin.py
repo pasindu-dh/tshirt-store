@@ -71,6 +71,11 @@ def list_admin_products(
     return products
 
 
+@router.get("/products/{product_id}", response_model=ProductOut)
+def get_admin_product(product_id: int, db: Session = Depends(get_db)):
+    return _require_product(product_id, db)
+
+
 @router.post(
     "/products",
     response_model=ProductOut,
