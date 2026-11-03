@@ -18,6 +18,19 @@ export default function AuthProvider({ children }) {
   );
 
   useEffect(() => {
+    const handleForcedLogout = () => {
+      setUser(null);
+      setLoading(false);
+    };
+
+    window.addEventListener("furzy:logout", handleForcedLogout);
+
+    return () => {
+      window.removeEventListener("furzy:logout", handleForcedLogout);
+    };
+  }, []);
+
+  useEffect(() => {
     const stored = getStoredAuth();
 
     if (!stored?.access_token) {

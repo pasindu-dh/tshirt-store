@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -8,6 +8,7 @@ from app import security
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import User
+from app.rate_limit import login_account_limiter, login_ip_limiter
 from app.schemas.auth import AuthResponse, RefreshRequest, UserOut, UserRegister
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -59,20 +60,42 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=AuthResponse)
 def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
     email = form_data.username.strip().lower()
+    client_ip = request.client.host if request.client else "unknown"
+    account_key = f"account:{email}"
+    ip_key = f"ip:{client_ip}"
+
+    retry_after = max(
+        login_account_limiter.retry_after(account_key),
+        login_ip_limiter.retry_after(ip_key),
+    )
+
+    if retry_after > 0:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Try again later.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
     user = db.scalar(select(User).where(User.email == email))
 
     if user is None or not security.verify_password(
         form_data.password, user.password_hash
     ):
+        login_account_limiter.record_failure(account_key)
+        login_ip_limiter.record_failure(ip_key)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    login_account_limiter.reset(account_key)
+    login_ip_limiter.reset(ip_key)
 
     return _auth_response(user)
 

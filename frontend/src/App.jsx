@@ -1,100 +1,131 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Route, Routes } from "react-router-dom";
 import Cart from "./components/Cart";
 import Navbar from "./components/Navbar";
-import ParticleBackground from "./components/ParticleBackground";
 import ProtectedRoute from "./components/ProtectedRoute";
-import About from "./pages/About";
-import Checkout from "./pages/Checkout";
-import Contact from "./pages/Contact";
-import Forbidden from "./pages/Forbidden";
-import Home from "./pages/Home";
-import Login from "./pages/Login";
-import NotFound from "./pages/NotFound";
-import OrderDetail from "./pages/OrderDetail";
-import Orders from "./pages/Orders";
-import ProductDetail from "./pages/ProductDetail";
-import Register from "./pages/Register";
-import Shop from "./pages/Shop";
-import AdminCategories from "./pages/admin/AdminCategories";
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import AdminLayout from "./pages/admin/AdminLayout";
-import AdminOrderDetail from "./pages/admin/AdminOrderDetail";
-import AdminOrders from "./pages/admin/AdminOrders";
-import AdminProductForm from "./pages/admin/AdminProductForm";
-import AdminProducts from "./pages/admin/AdminProducts";
+
+const ParticleBackground = lazy(
+  () => import("./components/ParticleBackground")
+);
+const About = lazy(() => import("./pages/About"));
+const Checkout = lazy(() => import("./pages/Checkout"));
+const Contact = lazy(() => import("./pages/Contact"));
+const Forbidden = lazy(() => import("./pages/Forbidden"));
+const Home = lazy(() => import("./pages/Home"));
+const Login = lazy(() => import("./pages/Login"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const OrderDetail = lazy(() => import("./pages/OrderDetail"));
+const Orders = lazy(() => import("./pages/Orders"));
+const ProductDetail = lazy(() => import("./pages/ProductDetail"));
+const Register = lazy(() => import("./pages/Register"));
+const Shop = lazy(() => import("./pages/Shop"));
+const AdminCategories = lazy(() => import("./pages/admin/AdminCategories"));
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
+const AdminOrderDetail = lazy(
+  () => import("./pages/admin/AdminOrderDetail")
+);
+const AdminOrders = lazy(() => import("./pages/admin/AdminOrders"));
+const AdminProductForm = lazy(
+  () => import("./pages/admin/AdminProductForm")
+);
+const AdminProducts = lazy(() => import("./pages/admin/AdminProducts"));
+
+function RouteFallback() {
+  return (
+    <div
+      role="status"
+      className="flex min-h-[50vh] items-center justify-center text-gray-400"
+    >
+      Loading...
+    </div>
+  );
+}
 
 function App() {
   const [search, setSearch] = useState("");
 
   return (
     <>
-      <ParticleBackground />
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[60] focus:rounded-md focus:bg-cyan-400 focus:px-4 focus:py-2 focus:text-black"
+      >
+        Skip to content
+      </a>
+
+      <Suspense fallback={null}>
+        <ParticleBackground />
+      </Suspense>
 
       <div className="relative z-10 bg-black text-white min-h-screen pt-20">
         <Navbar search={search} setSearch={setSearch} />
         <Cart />
 
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route
-            path="/shop"
-            element={<Shop search={search} setSearch={setSearch} />}
-          />
-          <Route path="/product/:slug" element={<ProductDetail />} />
-          <Route path="/about" element={<About />} />
-          <Route path="/contact" element={<Contact />} />
-          <Route
-            path="/checkout"
-            element={
-              <ProtectedRoute>
-                <Checkout />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/orders"
-            element={
-              <ProtectedRoute>
-                <Orders />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/orders/:orderId"
-            element={
-              <ProtectedRoute>
-                <OrderDetail />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/forbidden" element={<Forbidden />} />
-          <Route
-            path="/admin"
-            element={
-              <ProtectedRoute adminOnly>
-                <AdminLayout />
-              </ProtectedRoute>
-            }
-          >
-            <Route index element={<AdminDashboard />} />
-            <Route path="orders" element={<AdminOrders />} />
-            <Route
-              path="orders/:orderId"
-              element={<AdminOrderDetail />}
-            />
-            <Route path="products" element={<AdminProducts />} />
-            <Route path="products/new" element={<AdminProductForm />} />
-            <Route
-              path="products/:productId/edit"
-              element={<AdminProductForm />}
-            />
-            <Route path="categories" element={<AdminCategories />} />
-          </Route>
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <main id="main-content" tabIndex={-1}>
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route
+                path="/shop"
+                element={<Shop search={search} setSearch={setSearch} />}
+              />
+              <Route path="/product/:slug" element={<ProductDetail />} />
+              <Route path="/about" element={<About />} />
+              <Route path="/contact" element={<Contact />} />
+              <Route
+                path="/checkout"
+                element={
+                  <ProtectedRoute>
+                    <Checkout />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders"
+                element={
+                  <ProtectedRoute>
+                    <Orders />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/orders/:orderId"
+                element={
+                  <ProtectedRoute>
+                    <OrderDetail />
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/forbidden" element={<Forbidden />} />
+              <Route
+                path="/admin"
+                element={
+                  <ProtectedRoute adminOnly>
+                    <AdminLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<AdminDashboard />} />
+                <Route path="orders" element={<AdminOrders />} />
+                <Route
+                  path="orders/:orderId"
+                  element={<AdminOrderDetail />}
+                />
+                <Route path="products" element={<AdminProducts />} />
+                <Route path="products/new" element={<AdminProductForm />} />
+                <Route
+                  path="products/:productId/edit"
+                  element={<AdminProductForm />}
+                />
+                <Route path="categories" element={<AdminCategories />} />
+              </Route>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
+        </main>
       </div>
     </>
   );

@@ -19,9 +19,12 @@ A full-stack web application featuring an interactive React frontend and a robus
 - **SQLite** for local development (PostgreSQL-ready via `DATABASE_URL`)
 - **PyJWT** + **pwdlib (Argon2)** (JWT authentication and password hashing)
 - **Pydantic Settings** (Environment configuration)
+- **Pillow** (Server-side image verification for admin uploads)
+- **psycopg 3** (PostgreSQL driver for production)
 - **Uvicorn** (ASGI server)
 - **StaticFiles** (Local image serving)
 - **CORS Middleware** (Configured to allow frontend connections)
+- **pytest + FastAPI TestClient** (Backend test suite)
 
 ## 📁 Project Structure
 
@@ -36,24 +39,35 @@ tshirt-store/
 │   │   ├── models/       # SQLAlchemy models
 │   │   ├── schemas/      # Pydantic request/response schemas
 │   │   ├── routers/      # Public and admin API routes
-│   │   ├── services/     # Catalog business logic
+│   │   ├── services/     # Catalog, cart, and order business logic
 │   │   ├── utils/        # Slug helpers
 │   │   ├── security.py   # Password hashing and JWT helpers
+│   │   ├── rate_limit.py # Failed-login rate limiter
 │   │   ├── dependencies.py # Current-user and admin-guard dependencies
 │   │   ├── seed.py       # Sample catalog seed script
-│   │   └── seed_admin.py # Development admin account seed script
+│   │   └── seed_admin.py # Admin account seed script
 │   ├── alembic/          # Database migrations
 │   ├── images/           # Static product images served by the backend
 │   ├── uploads/          # Uploaded product images (runtime, git-ignored)
+│   ├── tests/            # pytest suite (isolated temporary database)
 │   ├── main.py           # Entry point for `uvicorn main:app`
-│   └── requirements.txt
+│   ├── Dockerfile        # Production API image
+│   ├── requirements.txt
+│   └── requirements-dev.txt
 │
-└── frontend/             # React/Vite frontend application
-    ├── public/
-    ├── src/              # React components, pages, API client, context
-    │   └── pages/admin/  # Admin dashboard, products, and categories
-    ├── package.json
-    └── vite.config.js
+├── frontend/             # React/Vite frontend application
+│   ├── public/
+│   ├── e2e/              # Playwright purchase-journey test
+│   ├── src/              # React components, pages, API client, context
+│   │   ├── test/         # Vitest setup
+│   │   ├── utils/        # Cart and error helpers
+│   │   └── pages/admin/  # Admin dashboard, products, and categories
+│   ├── package.json
+│   ├── playwright.config.js
+│   └── vite.config.js
+│
+├── .github/workflows/ci.yml
+└── DEPLOYMENT.md
 ```
 
 ## 🛠️ Getting Started
@@ -92,7 +106,9 @@ The backend serves the API and static images for the products.
 
    Allowed frontend origins default to `http://localhost:5173` and `http://127.0.0.1:5173`. Override them with the `FRONTEND_ORIGINS` environment variable (comma-separated). See `backend/.env.example` for all options. The SQLite database lives at `backend/store.db` and is git-ignored.
 
-   Product images uploaded through the admin panel are stored in `backend/uploads/` (created automatically and git-ignored) and served from `/uploads`.
+   Product images uploaded through the admin panel are stored in `backend/uploads/` (created automatically and git-ignored) and served from `/uploads`. Uploads are verified by Pillow: the file must actually contain a JPEG, PNG, or WebP image, not just claim that content type. Files are limited to 5 MB and 40 megapixels.
+
+   Login attempts are rate-limited in memory (5 failed attempts per account and 20 per IP in a 15-minute window). Successful logins reset the account/IP counters. Multi-worker deployments should move this to Redis.
 
 ### 2. Frontend Setup
 
@@ -129,9 +145,11 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 
 ### Authentication
 - `POST /auth/register`: Create a customer account and return access + refresh tokens.
-- `POST /auth/login`: OAuth2 password-form login (`username` is the email). Also enables the **Authorize** button in `/docs`.
+- `POST /auth/login`: OAuth2 password-form login (`username` is the email). Also enables the **Authorize** button in `/docs`. Repeated failed attempts return `429` with `Retry-After`.
 - `POST /auth/refresh`: Exchange a refresh token for a new token pair.
 - `GET /auth/me`: Return the current authenticated user.
+
+> The frontend silently refreshes an expired access token on a `401` and retries the request. If the refresh token is also invalid, the session is cleared and the user is signed out.
 
 ### Cart (authenticated)
 > All cart endpoints require a bearer token. Guests keep their cart in localStorage and merge it after signing in.
@@ -158,7 +176,7 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 - `POST /admin/products`: Create a product with images and size variants.
 - `PUT /admin/products/{id}`: Update a product, its images, or its variants.
 - `DELETE /admin/products/{id}`: Delete a product.
-- `POST /admin/uploads`: Upload a product image using multipart form data (`file` field). Accepts JPEG, PNG, and WebP up to 5 MB; returns `{ "url": "/uploads/<filename>" }`.
+- `POST /admin/uploads`: Upload a product image using multipart form data (`file` field). Accepts JPEG, PNG, and WebP up to 5 MB; the actual image format is verified with Pillow. Returns `{ "url": "/uploads/<filename>" }`.
 - `POST /admin/categories`: Create a category.
 - `PUT /admin/categories/{id}`: Rename a category.
 - `DELETE /admin/categories/{id}`: Delete an empty category.
@@ -184,6 +202,45 @@ Sign in at `/login` with an admin account to manage the store:
 - **Shop** uses server-side search, category filtering, price/name sorting, and paginated infinite scrolling.
 - Product cards open a product detail page at `/product/:slug`.
 - The detail page includes an image gallery, color and size selection, live stock status, and a stock-aware add-to-cart button.
-- Guests keep their cart in localStorage; after login or registration it is merged into the server-side cart. Signed-in customers keep their cart across sessions and devices.
+- Guests keep their cart in localStorage; after login or registration it is merged into the server-side cart. Signed-in customers keep their cart across sessions and devices. Expired access tokens are refreshed automatically.
 - Checkout requires an account, validates prices and stock server-side, and currently supports **Cash on Delivery**. A flat shipping fee of LKR 350 is applied by default (configurable with `SHIPPING_FEE_LKR`).
 - After ordering, customers see a confirmation and can review their orders at `/orders`.
+
+## 🧪 Testing
+
+### Backend
+
+The pytest suite uses an isolated temporary SQLite database and upload folder, so it never touches `backend/store.db`.
+
+```bash
+cd backend
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+Coverage includes authentication and role guards, login rate limiting, catalog filters and slug lookup, cart stock caps and guest-cart merging, transactional order creation and stock decrement, admin status transitions and cancellation restock, dashboard stats, upload validation, security headers, and CORS.
+
+### Frontend
+
+```bash
+cd frontend
+npm test          # Vitest + React Testing Library
+npm run lint
+npm run build
+```
+
+### End-to-end
+
+The Playwright test drives a full guest-cart → login → checkout → order → history journey and verifies that the access-token refresh interceptor recovers from an expired token. It needs a running backend with an admin account.
+
+```bash
+cd frontend
+npx playwright install chromium   # once
+E2E_DISPOSABLE_DB=1 E2E_ADMIN_EMAIL=... E2E_ADMIN_PASSWORD=... npm run test:e2e
+```
+
+The test refuses to run unless `E2E_DISPOSABLE_DB=1` (or `CI=true`) is set, because it creates an order and a customer account. It deletes the product it creates. `E2E_ADMIN_EMAIL` and `E2E_ADMIN_PASSWORD` override the admin credentials read from `backend/.env`. See [`DEPLOYMENT.md`](DEPLOYMENT.md) for running the suite against a disposable database.
+
+## 🚢 Deployment
+
+See [`DEPLOYMENT.md`](DEPLOYMENT.md) for the production checklist and step-by-step instructions for Render/Railway, PostgreSQL, Vercel/Netlify, Docker, CI, and uploads. GitHub Actions runs backend tests, frontend lint/unit/build, and the Playwright journey on every push and pull request.

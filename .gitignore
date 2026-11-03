@@ -26,6 +26,14 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Tests
+.pytest_cache/
+backend/.pytest_cache/
+backend/e2e-uploads/
+frontend/coverage/
+frontend/test-results/
+frontend/playwright-report/
+
 # Editor / OS files
 .vscode/
 .idea/
