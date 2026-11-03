@@ -5,7 +5,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.routers import admin, auth, categories, products, uploads
+from app.routers import (
+    admin,
+    auth,
+    cart,
+    categories,
+    orders,
+    products,
+    uploads,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 IMAGES_DIR = BASE_DIR / "images"
@@ -16,8 +24,9 @@ app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description=(
-        "Catalog and authentication API for the FURZY T-shirt store. "
-        "Admin routes require a bearer token with the admin role."
+        "Catalog, authentication, cart, and order API for the FURZY "
+        "T-shirt store. Admin routes require a bearer token with the "
+        "admin role."
     ),
 )
 
@@ -37,6 +46,8 @@ app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 app.include_router(products.router)
 app.include_router(categories.router)
 app.include_router(auth.router)
+app.include_router(cart.router)
+app.include_router(orders.router)
 app.include_router(admin.router)
 app.include_router(uploads.router)
 

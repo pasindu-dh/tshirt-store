@@ -1,11 +1,17 @@
 import { useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import {
+  Link,
+  Navigate,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import useAuth from "../hooks/useAuth";
 import { getApiError } from "../utils/errors";
 
 function Register() {
   const { user, register } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -15,7 +21,9 @@ function Register() {
   const [submitting, setSubmitting] = useState(false);
 
   if (user) {
-    return <Navigate to="/" replace />;
+    return (
+      <Navigate to={location.state?.from ?? "/"} replace />
+    );
   }
 
   const handleSubmit = async (event) => {
@@ -36,7 +44,7 @@ function Register() {
 
     try {
       await register({ name, email, password });
-      navigate("/shop", { replace: true });
+      navigate(location.state?.from ?? "/shop", { replace: true });
     } catch (requestError) {
       setError(
         getApiError(
@@ -124,7 +132,11 @@ function Register() {
 
         <p className="text-center text-gray-400 mt-6">
           Already have an account?{" "}
-          <Link to="/login" className="text-cyan-400 hover:text-cyan-300">
+          <Link
+            to="/login"
+            state={location.state}
+            className="text-cyan-400 hover:text-cyan-300"
+          >
             Sign in
           </Link>
         </p>

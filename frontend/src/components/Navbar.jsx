@@ -1,4 +1,9 @@
-import { FiLogOut, FiSearch, FiShoppingBag } from "react-icons/fi";
+import {
+  FiLogOut,
+  FiPackage,
+  FiSearch,
+  FiShoppingBag,
+} from "react-icons/fi";
 import { useLocation, useNavigate } from "react-router-dom";
 import useAuth from "../hooks/useAuth";
 import useCart from "../hooks/useCart";
@@ -115,6 +120,15 @@ function Navbar({ search, setSearch }) {
           {/* ACCOUNT */}
           {user ? (
             <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => navigate("/orders")}
+                aria-label="My orders"
+                className="text-xl text-gray-300 hover:text-cyan-400 transition"
+              >
+                <FiPackage />
+              </button>
+
               <span className="hidden xl:block max-w-[140px] truncate text-sm text-gray-300">
                 {user.name}
               </span>

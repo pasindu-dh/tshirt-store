@@ -9,6 +9,7 @@ function Cart() {
     decreaseQty,
     removeItem,
     cartTotal,
+    cartLoading,
     isCartOpen,
     closeCart,
   } = useCart();
@@ -50,7 +51,11 @@ function Cart() {
 
         {/* ITEMS */}
         <div className="flex-1 p-4 space-y-4 overflow-y-auto">
-          {cart.length === 0 ? (
+          {cartLoading && cart.length === 0 ? (
+            <div className="text-center">
+              <p className="text-gray-400">Loading your cart...</p>
+            </div>
+          ) : cart.length === 0 ? (
             <div className="text-center">
               <p className="text-gray-400">Cart is empty</p>
               <button
@@ -149,14 +154,18 @@ function Cart() {
 
         {/* FOOTER */}
         <div className="p-4 border-t border-gray-800">
-          <p className="mb-3">
-            Total: <span className="text-cyan-400">LKR {cartTotal}</span>
+          <p className="mb-1">
+            Subtotal:{" "}
+            <span className="text-cyan-400">LKR {cartTotal}</span>
+          </p>
+          <p className="mb-3 text-xs text-gray-500">
+            Shipping calculated at checkout.
           </p>
 
           <button
             type="button"
             onClick={goToCheckout}
-            disabled={cart.length === 0}
+            disabled={cart.length === 0 || cartLoading}
             className="w-full bg-cyan-400 text-black py-2 rounded-lg hover:bg-cyan-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Checkout

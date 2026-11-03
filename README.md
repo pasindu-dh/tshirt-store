@@ -113,7 +113,7 @@ The frontend runs on Vite and communicates with the FastAPI backend.
    ```
    *The terminal will output the local URL (usually `http://localhost:5173`) where you can view the application.*
 
-   Frontend routes: `/` (home), `/shop`, `/product/:slug`, `/about`, `/contact`, `/checkout`, `/login`, `/register`, `/forbidden`, and the admin area (`/admin`, `/admin/products`, `/admin/products/new`, `/admin/products/:id/edit`, `/admin/categories`). The admin area requires the `admin` role.
+   Frontend routes: `/` (home), `/shop`, `/product/:slug`, `/about`, `/contact`, `/login`, `/register`, `/forbidden`, `/checkout` (signed-in), `/orders` and `/orders/:orderId` (signed-in), and the admin area (`/admin`, `/admin/products`, `/admin/products/new`, `/admin/products/:id/edit`, `/admin/categories`). The admin area requires the `admin` role.
 
 ## 🔗 API Endpoints
 
@@ -132,6 +132,23 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 - `POST /auth/login`: OAuth2 password-form login (`username` is the email). Also enables the **Authorize** button in `/docs`.
 - `POST /auth/refresh`: Exchange a refresh token for a new token pair.
 - `GET /auth/me`: Return the current authenticated user.
+
+### Cart (authenticated)
+> All cart endpoints require a bearer token. Guests keep their cart in localStorage and merge it after signing in.
+
+- `GET /cart`: Current cart with line items, item count, subtotal, shipping fee, and total.
+- `POST /cart/items`: Add a variant (`variant_id`, `quantity`); stock is enforced.
+- `PUT /cart/items/{id}`: Set a line quantity.
+- `DELETE /cart/items/{id}`: Remove a line.
+- `DELETE /cart`: Empty the cart.
+- `POST /cart/merge`: Merge guest cart items into the authenticated cart, capping quantities at available stock.
+
+### Orders (authenticated)
+> Requires a bearer token. Prices, shipping, and totals are computed server-side from the database, and stock is revalidated at checkout.
+
+- `POST /orders`: Place an order from the server cart using the supplied contact/shipping details and `payment_method: "cod"`. Stock is decremented, line items are snapshotted, and the cart is cleared in one transaction.
+- `GET /orders`: The signed-in customer's orders, newest first.
+- `GET /orders/{id}`: One of the signed-in customer's orders.
 
 ### Admin
 > All admin endpoints require `Authorization: Bearer <access_token>` for a user with the `admin` role. Requests without a token return `401`; customer tokens return `403`.
@@ -161,4 +178,6 @@ Sign in at `/login` with an admin account to manage the store:
 - **Shop** uses server-side search, category filtering, price/name sorting, and paginated infinite scrolling.
 - Product cards open a product detail page at `/product/:slug`.
 - The detail page includes an image gallery, color and size selection, live stock status, and a stock-aware add-to-cart button.
-- Cart line items keep the selected size/color variant, and quantities are capped at the available stock.
+- Guests keep their cart in localStorage; after login or registration it is merged into the server-side cart. Signed-in customers keep their cart across sessions and devices.
+- Checkout requires an account, validates prices and stock server-side, and currently supports **Cash on Delivery**. A flat shipping fee of LKR 350 is applied by default (configurable with `SHIPPING_FEE_LKR`).
+- After ordering, customers see a confirmation and can review their orders at `/orders`.

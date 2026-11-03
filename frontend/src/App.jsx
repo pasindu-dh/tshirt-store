@@ -11,6 +11,8 @@ import Forbidden from "./pages/Forbidden";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
+import OrderDetail from "./pages/OrderDetail";
+import Orders from "./pages/Orders";
 import ProductDetail from "./pages/ProductDetail";
 import Register from "./pages/Register";
 import Shop from "./pages/Shop";
@@ -40,7 +42,30 @@ function App() {
           <Route path="/product/:slug" element={<ProductDetail />} />
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<Contact />} />
-          <Route path="/checkout" element={<Checkout />} />
+          <Route
+            path="/checkout"
+            element={
+              <ProtectedRoute>
+                <Checkout />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/orders"
+            element={
+              <ProtectedRoute>
+                <Orders />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/orders/:orderId"
+            element={
+              <ProtectedRoute>
+                <OrderDetail />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/forbidden" element={<Forbidden />} />

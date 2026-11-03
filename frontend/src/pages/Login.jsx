@@ -14,9 +14,11 @@ function Login() {
   const [submitting, setSubmitting] = useState(false);
 
   if (user) {
-    return (
-      <Navigate to={user.role === "admin" ? "/admin" : "/"} replace />
-    );
+    const target =
+      location.state?.from ??
+      (user.role === "admin" ? "/admin" : "/");
+
+    return <Navigate to={target} replace />;
   }
 
   const handleSubmit = async (event) => {
@@ -95,6 +97,7 @@ function Login() {
           Don&apos;t have an account?{" "}
           <Link
             to="/register"
+            state={location.state}
             className="text-cyan-400 hover:text-cyan-300"
           >
             Create one

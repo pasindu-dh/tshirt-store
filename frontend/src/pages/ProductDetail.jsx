@@ -31,6 +31,8 @@ function ProductDetail({ slug }) {
   const [selectedColor, setSelectedColor] = useState("");
   const [selectedSize, setSelectedSize] = useState("");
   const [message, setMessage] = useState("");
+  const [messageError, setMessageError] = useState(false);
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -128,7 +130,7 @@ function ProductDetail({ slug }) {
     }
   };
 
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
     if (
       !product ||
       !selectedVariant ||
@@ -138,13 +140,28 @@ function ProductDetail({ slug }) {
       return;
     }
 
-    const added = addToCart(product, selectedVariant);
+    setAdding(true);
+    setMessage("");
+    setMessageError(false);
 
-    if (added) {
-      setMessage("Added to cart.");
-      openCart();
-    } else {
-      setMessage("Maximum available stock is already in your cart.");
+    try {
+      const added = await addToCart(product, selectedVariant);
+
+      if (added) {
+        setMessage("Added to cart.");
+        setMessageError(false);
+        openCart();
+      } else {
+        setMessage(
+          "Maximum available stock is already in your cart."
+        );
+        setMessageError(true);
+      }
+    } catch (error) {
+      setMessage(error.message || "Could not add to cart.");
+      setMessageError(true);
+    } finally {
+      setAdding(false);
     }
   };
 
@@ -383,16 +400,22 @@ function ProductDetail({ slug }) {
             )}
 
             {message && (
-              <p className="text-sm text-green-400 mt-4">{message}</p>
+              <p
+                className={`text-sm mt-4 ${
+                  messageError ? "text-red-400" : "text-green-400"
+                }`}
+              >
+                {message}
+              </p>
             )}
 
             <button
               type="button"
               onClick={handleAddToCart}
-              disabled={buttonDisabled}
+              disabled={buttonDisabled || adding}
               className="mt-6 w-full bg-cyan-400 text-black py-3 rounded-lg font-semibold hover:bg-cyan-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {buttonLabel}
+              {adding ? "Adding..." : buttonLabel}
             </button>
 
             <p className="text-xs text-gray-500 mt-4">

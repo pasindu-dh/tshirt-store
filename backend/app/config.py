@@ -8,7 +8,7 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
     app_name: str = "FURZY T-Shirt Store API"
-    app_version: str = "0.4.0"
+    app_version: str = "0.5.0"
 
     # Default to an absolute path so the database location never depends on CWD.
     database_url: str = f"sqlite:///{(BACKEND_DIR / 'store.db').as_posix()}"
@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # Uploaded product images.
     uploads_dir: str = str(BACKEND_DIR / "uploads")
     max_upload_bytes: int = 5 * 1024 * 1024
+
+    # Store checkout settings.
+    shipping_fee_lkr: int = 350
 
     frontend_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
