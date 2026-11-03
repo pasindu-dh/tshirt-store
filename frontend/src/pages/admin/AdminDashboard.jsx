@@ -1,42 +1,46 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { getAdminProducts } from "../../api/admin";
-import { getCategories } from "../../api/categories";
+import { getAdminStats } from "../../api/adminOrders";
 import { getApiError } from "../../utils/errors";
 
-function StatCard({ label, value }) {
+function StatCard({ label, value, hint }) {
   return (
     <div className="bg-[#020617] border border-gray-800 rounded-2xl p-5">
       <p className="text-sm text-gray-400">{label}</p>
-      <p className="text-3xl font-bold text-cyan-400 mt-2">{value ?? "..."}</p>
+      <p className="text-3xl font-bold text-cyan-400 mt-2">
+        {value ?? "..."}
+      </p>
+      {hint && <p className="text-xs text-gray-500 mt-1">{hint}</p>}
+    </div>
+  );
+}
+
+function SmallStat({ label, value }) {
+  return (
+    <div className="bg-[#020617] border border-gray-800 rounded-xl p-4">
+      <p className="text-xs text-gray-400">{label}</p>
+      <p className="text-xl font-semibold text-gray-100 mt-1">
+        {value ?? "..."}
+      </p>
     </div>
   );
 }
 
 function AdminDashboard() {
   const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([getAdminProducts({ limit: 100 }), getCategories()])
-      .then(([productData, categories]) => {
-        if (cancelled) return;
-
-        const products = productData.products;
-
-        setStats({
-          total: productData.total,
-          active: products.filter((product) => product.is_active).length,
-          lowStock: products.reduce(
-            (sum, product) =>
-              sum +
-              product.variants.filter((variant) => variant.stock <= 5).length,
-            0
-          ),
-          categories: categories.length,
-        });
+    getAdminStats()
+      .then((data) => {
+        if (!cancelled) {
+          setStats(data);
+          setError("");
+        }
       })
       .catch((requestError) => {
         if (!cancelled) {
@@ -44,62 +48,137 @@ function AdminDashboard() {
             getApiError(requestError, "Could not load dashboard data.")
           );
         }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshKey]);
+
+  const retry = () => {
+    setLoading(true);
+    setError("");
+    setRefreshKey((current) => current + 1);
+  };
 
   return (
     <div>
       <h2 className="text-2xl font-bold">Dashboard</h2>
       <p className="text-gray-400 text-sm mt-1">
-        A quick overview of your catalog.
+        Store performance and order overview.
       </p>
 
       {error ? (
-        <p className="mt-6 text-red-400">{error}</p>
-      ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
-          <StatCard label="Total products" value={stats?.total} />
-          <StatCard label="Active products" value={stats?.active} />
-          <StatCard label="Low-stock variants" value={stats?.lowStock} />
-          <StatCard label="Categories" value={stats?.categories} />
+        <div className="mt-10 text-center">
+          <p className="text-red-400">{error}</p>
+          <button
+            type="button"
+            onClick={retry}
+            className="mt-4 px-5 py-2 rounded-lg border border-gray-700 text-gray-300 hover:border-cyan-400 hover:text-cyan-400"
+          >
+            Try again
+          </button>
         </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+            <StatCard
+              label="Revenue (delivered)"
+              value={stats ? `LKR ${stats.revenue}` : null}
+              hint="Cash collected on delivered orders"
+            />
+            <StatCard
+              label="Open orders"
+              value={stats?.open_orders}
+              hint="Pending, confirmed, or shipped"
+            />
+            <StatCard
+              label="Pending orders"
+              value={stats?.pending_orders}
+              hint="Awaiting confirmation"
+            />
+            <StatCard
+              label="Low-stock variants"
+              value={stats?.low_stock_variants}
+              hint="5 or fewer units remaining"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4">
+            <SmallStat
+              label="Total orders"
+              value={stats?.orders_total}
+            />
+            <SmallStat
+              label="Delivered"
+              value={stats?.delivered_orders}
+            />
+            <SmallStat
+              label="Cancelled"
+              value={stats?.cancelled_orders}
+            />
+            <SmallStat
+              label="Products"
+              value={stats?.products_total}
+            />
+            <SmallStat
+              label="Categories"
+              value={stats?.categories_total}
+            />
+          </div>
+
+          {!loading && !stats && (
+            <p className="mt-4 text-xs text-gray-500">
+              Dashboard data is unavailable.
+            </p>
+          )}
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
+            <Link
+              to="/admin/orders"
+              className="bg-[#020617] border border-cyan-500/40 rounded-2xl p-5 hover:border-cyan-400 transition"
+            >
+              <h3 className="font-semibold">Manage orders</h3>
+              <p className="text-sm text-gray-400 mt-2">
+                Confirm, ship, deliver, or cancel customer orders.
+              </p>
+            </Link>
+
+            <Link
+              to="/admin/products/new"
+              className="bg-[#020617] border border-gray-800 rounded-2xl p-5 hover:border-cyan-400 transition"
+            >
+              <h3 className="font-semibold">Add a product</h3>
+              <p className="text-sm text-gray-400 mt-2">
+                Upload images, set sizes, and publish to the storefront.
+              </p>
+            </Link>
+
+            <Link
+              to="/admin/products"
+              className="bg-[#020617] border border-gray-800 rounded-2xl p-5 hover:border-cyan-400 transition"
+            >
+              <h3 className="font-semibold">Manage products</h3>
+              <p className="text-sm text-gray-400 mt-2">
+                Edit prices, stock, visibility, or remove products.
+              </p>
+            </Link>
+
+            <Link
+              to="/admin/categories"
+              className="bg-[#020617] border border-gray-800 rounded-2xl p-5 hover:border-cyan-400 transition"
+            >
+              <h3 className="font-semibold">Manage categories</h3>
+              <p className="text-sm text-gray-400 mt-2">
+                Organize the catalog into shoppable groups.
+              </p>
+            </Link>
+          </div>
+        </>
       )}
-
-      <div className="grid md:grid-cols-3 gap-4 mt-8">
-        <Link
-          to="/admin/products/new"
-          className="bg-[#020617] border border-cyan-500/40 rounded-2xl p-5 hover:border-cyan-400 transition"
-        >
-          <h3 className="font-semibold">Add a product</h3>
-          <p className="text-sm text-gray-400 mt-2">
-            Upload images, set sizes, and publish to the storefront.
-          </p>
-        </Link>
-
-        <Link
-          to="/admin/products"
-          className="bg-[#020617] border border-gray-800 rounded-2xl p-5 hover:border-cyan-400 transition"
-        >
-          <h3 className="font-semibold">Manage products</h3>
-          <p className="text-sm text-gray-400 mt-2">
-            Edit prices, stock, visibility, or remove products.
-          </p>
-        </Link>
-
-        <Link
-          to="/admin/categories"
-          className="bg-[#020617] border border-gray-800 rounded-2xl p-5 hover:border-cyan-400 transition"
-        >
-          <h3 className="font-semibold">Manage categories</h3>
-          <p className="text-sm text-gray-400 mt-2">
-            Organize the catalog into shoppable groups.
-          </p>
-        </Link>
-      </div>
     </div>
   );
 }

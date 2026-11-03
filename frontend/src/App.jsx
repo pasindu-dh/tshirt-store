@@ -19,6 +19,8 @@ import Shop from "./pages/Shop";
 import AdminCategories from "./pages/admin/AdminCategories";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminLayout from "./pages/admin/AdminLayout";
+import AdminOrderDetail from "./pages/admin/AdminOrderDetail";
+import AdminOrders from "./pages/admin/AdminOrders";
 import AdminProductForm from "./pages/admin/AdminProductForm";
 import AdminProducts from "./pages/admin/AdminProducts";
 
@@ -78,6 +80,11 @@ function App() {
             }
           >
             <Route index element={<AdminDashboard />} />
+            <Route path="orders" element={<AdminOrders />} />
+            <Route
+              path="orders/:orderId"
+              element={<AdminOrderDetail />}
+            />
             <Route path="products" element={<AdminProducts />} />
             <Route path="products/new" element={<AdminProductForm />} />
             <Route

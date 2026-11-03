@@ -7,6 +7,8 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.routers import (
     admin,
+    admin_orders,
+    admin_stats,
     auth,
     cart,
     categories,
@@ -49,6 +51,8 @@ app.include_router(auth.router)
 app.include_router(cart.router)
 app.include_router(orders.router)
 app.include_router(admin.router)
+app.include_router(admin_orders.router)
+app.include_router(admin_stats.router)
 app.include_router(uploads.router)
 
 

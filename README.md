@@ -113,7 +113,7 @@ The frontend runs on Vite and communicates with the FastAPI backend.
    ```
    *The terminal will output the local URL (usually `http://localhost:5173`) where you can view the application.*
 
-   Frontend routes: `/` (home), `/shop`, `/product/:slug`, `/about`, `/contact`, `/login`, `/register`, `/forbidden`, `/checkout` (signed-in), `/orders` and `/orders/:orderId` (signed-in), and the admin area (`/admin`, `/admin/products`, `/admin/products/new`, `/admin/products/:id/edit`, `/admin/categories`). The admin area requires the `admin` role.
+   Frontend routes: `/` (home), `/shop`, `/product/:slug`, `/about`, `/contact`, `/login`, `/register`, `/forbidden`, `/checkout` (signed-in), `/orders` and `/orders/:orderId` (signed-in), and the admin area (`/admin`, `/admin/orders`, `/admin/orders/:orderId`, `/admin/products`, `/admin/products/new`, `/admin/products/:id/edit`, `/admin/categories`). The admin area requires the `admin` role.
 
 ## 🔗 API Endpoints
 
@@ -162,12 +162,18 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 - `POST /admin/categories`: Create a category.
 - `PUT /admin/categories/{id}`: Rename a category.
 - `DELETE /admin/categories/{id}`: Delete an empty category.
+- `GET /admin/orders`: Paginated order list with optional `status` and `search` filters; returns `X-Total-Count`.
+- `GET /admin/orders/{id}`: Full order detail for any customer order.
+- `PATCH /admin/orders/{id}/status`: Advance an order through `pending → confirmed → shipped → delivered`, or cancel from `pending`/`confirmed`. Cancelling restores reserved stock; delivering marks COD payment as paid.
+- `GET /admin/stats`: Dashboard aggregates — revenue from delivered orders, open/pending/delivered/cancelled counts, low-stock variants, and product/category totals.
 
 ## 🛍️ Admin Panel
 
 Sign in at `/login` with an admin account to manage the store:
 
-- **Dashboard**: catalog totals, active products, low-stock variants, and category count.
+- **Dashboard**: delivered revenue, open/pending orders, low-stock variants, order/product/category counts, and quick actions.
+- **Orders**: search by order number/customer, filter by status, paginate, and open order details.
+- **Order detail**: review customer/shipping/payment details, items, totals, and notes; confirm, ship, deliver, or cancel orders. Cancelling restores stock, and delivering marks COD as paid.
 - **Products**: search/filter/paginate, activate or deactivate, delete, and edit.
 - **Product editor**: upload images (choose a primary image), set price, category and visibility, and manage size/color/SKU/stock variants.
 - **Categories**: create, rename, and delete categories (a category with products cannot be deleted).

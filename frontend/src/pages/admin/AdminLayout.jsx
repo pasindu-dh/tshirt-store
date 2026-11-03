@@ -20,6 +20,10 @@ function AdminLayout() {
           Dashboard
         </NavLink>
 
+        <NavLink to="/admin/orders" className={tabClass}>
+          Orders
+        </NavLink>
+
         <NavLink to="/admin/products" className={tabClass}>
           Products
         </NavLink>

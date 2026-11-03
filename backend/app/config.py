@@ -8,7 +8,7 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
     app_name: str = "FURZY T-Shirt Store API"
-    app_version: str = "0.5.0"
+    app_version: str = "0.6.0"
 
     # Default to an absolute path so the database location never depends on CWD.
     database_url: str = f"sqlite:///{(BACKEND_DIR / 'store.db').as_posix()}"

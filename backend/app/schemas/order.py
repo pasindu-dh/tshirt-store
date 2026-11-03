@@ -56,3 +56,31 @@ class OrderOut(BaseModel):
     items: list[OrderItemOut]
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class OrderStatusUpdate(BaseModel):
+    status: Literal[
+        "pending",
+        "confirmed",
+        "shipped",
+        "delivered",
+        "cancelled",
+    ]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AdminOrderStatsOut(BaseModel):
+    products_total: int
+    products_active: int
+    categories_total: int
+    low_stock_variants: int
+    orders_total: int
+    pending_orders: int
+    confirmed_orders: int
+    shipped_orders: int
+    delivered_orders: int
+    cancelled_orders: int
+    open_orders: int
+    revenue: int
+
