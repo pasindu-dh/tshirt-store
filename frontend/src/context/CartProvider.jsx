@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getCartKey, normalizeCartItem } from "../utils/cart";
 import CartContext from "./CartContext";
 
 const STORAGE_KEY = "cart";
@@ -7,7 +8,7 @@ function readStoredCart() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     const parsed = saved ? JSON.parse(saved) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? parsed.map(normalizeCartItem) : [];
   } catch {
     return [];
   }
@@ -25,42 +26,93 @@ export default function CartProvider({ children }) {
     }
   }, [cart]);
 
-  const addToCart = (product) => {
-    setCart((current) => {
-      const existing = current.find((item) => item.id === product.id);
+  const addToCart = (product, variant = null) => {
+    if (variant && variant.stock <= 0) {
+      return false;
+    }
 
-      if (existing) {
+    const variantId = variant?.id ?? null;
+    const key = getCartKey(product.id, variantId);
+    const maxStock = variant?.stock ?? Infinity;
+    const existing = cart.find((item) => item.key === key);
+
+    if (existing && existing.quantity >= (existing.stock ?? maxStock)) {
+      return false;
+    }
+
+    setCart((current) => {
+      const currentItem = current.find((item) => item.key === key);
+
+      if (currentItem) {
+        const stock = currentItem.stock ?? maxStock;
+
+        if (currentItem.quantity >= stock) {
+          return current;
+        }
+
         return current.map((item) =>
-          item.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
+          item.key === key
+            ? {
+                ...item,
+                quantity: item.quantity + 1,
+                stock: variant?.stock ?? item.stock,
+              }
             : item
         );
       }
 
-      return [...current, { ...product, quantity: 1 }];
+      return [
+        ...current,
+        {
+          key,
+          productId: product.id,
+          variantId,
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          image: product.image,
+          size: variant?.size ?? null,
+          color: variant?.color ?? null,
+          sku: variant?.sku ?? null,
+          stock: variant?.stock ?? null,
+          quantity: 1,
+        },
+      ];
     });
+
+    return true;
   };
 
-  const increaseQty = (id) => {
+  const increaseQty = (key) => {
     setCart((current) =>
-      current.map((item) =>
-        item.id === id ? { ...item, quantity: item.quantity + 1 } : item
-      )
+      current.map((item) => {
+        if (item.key !== key) return item;
+
+        const maxStock = item.stock ?? Infinity;
+
+        if (item.quantity >= maxStock) {
+          return item;
+        }
+
+        return { ...item, quantity: item.quantity + 1 };
+      })
     );
   };
 
-  const decreaseQty = (id) => {
+  const decreaseQty = (key) => {
     setCart((current) =>
       current
         .map((item) =>
-          item.id === id ? { ...item, quantity: item.quantity - 1 } : item
+          item.key === key
+            ? { ...item, quantity: item.quantity - 1 }
+            : item
         )
         .filter((item) => item.quantity > 0)
     );
   };
 
-  const removeItem = (id) => {
-    setCart((current) => current.filter((item) => item.id !== id));
+  const removeItem = (key) => {
+    setCart((current) => current.filter((item) => item.key !== key));
   };
 
   const clearCart = () => setCart([]);

@@ -34,6 +34,16 @@ def list_products(
     return products
 
 
+@router.get("/slug/{slug}", response_model=ProductOut)
+def get_product_by_slug(slug: str, db: Session = Depends(get_db)):
+    product = catalog.get_product_by_slug(db, slug, active_only=True)
+
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    return product
+
+
 @router.get("/{product_id}", response_model=ProductOut)
 def get_product(product_id: int, db: Session = Depends(get_db)):
     product = catalog.get_product(db, product_id, active_only=True)

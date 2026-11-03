@@ -113,7 +113,7 @@ The frontend runs on Vite and communicates with the FastAPI backend.
    ```
    *The terminal will output the local URL (usually `http://localhost:5173`) where you can view the application.*
 
-   Frontend routes: `/` (home), `/shop`, `/about`, `/contact`, `/checkout`, `/login`, `/register`, `/forbidden`, and the admin area (`/admin`, `/admin/products`, `/admin/products/new`, `/admin/products/:id/edit`, `/admin/categories`). The admin area requires the `admin` role.
+   Frontend routes: `/` (home), `/shop`, `/product/:slug`, `/about`, `/contact`, `/checkout`, `/login`, `/register`, `/forbidden`, and the admin area (`/admin`, `/admin/products`, `/admin/products/new`, `/admin/products/:id/edit`, `/admin/categories`). The admin area requires the `admin` role.
 
 ## 🔗 API Endpoints
 
@@ -122,6 +122,7 @@ The frontend runs on Vite and communicates with the FastAPI backend.
   - Query parameters: `page`, `limit` (max 100), `search`, `category` (slug), `sort` (`newest`, `price_asc`, `price_desc`, `name`).
   - Returns the `X-Total-Count` header with the total number of matching products.
 - `GET /products/{id}`: Product detail (active products only).
+- `GET /products/slug/{slug}`: Product detail by slug (active products only), used by the storefront product page.
 - `GET /categories`: List product categories.
 - `GET /images/{filename}`: Serves static images for the T-shirts.
 - `GET /`: Health check endpoint.
@@ -154,3 +155,10 @@ Sign in at `/login` with an admin account to manage the store:
 - **Product editor**: upload images (choose a primary image), set price, category and visibility, and manage size/color/SKU/stock variants.
 - **Categories**: create, rename, and delete categories (a category with products cannot be deleted).
 - Active products created in the admin panel appear on the storefront immediately.
+
+## 🛒 Storefront
+
+- **Shop** uses server-side search, category filtering, price/name sorting, and paginated infinite scrolling.
+- Product cards open a product detail page at `/product/:slug`.
+- The detail page includes an image gallery, color and size selection, live stock status, and a stock-aware add-to-cart button.
+- Cart line items keep the selected size/color variant, and quantities are capped at the available stock.

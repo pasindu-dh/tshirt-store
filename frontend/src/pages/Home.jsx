@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { getProducts } from "../api/products";
 import ProductCard from "../components/ProductCard";
 
 const FEATURED_LIMIT = 6;
 
-function Home({ search }) {
+function Home() {
   const navigate = useNavigate();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -15,11 +15,13 @@ function Home({ search }) {
     let cancelled = false;
 
     getProducts({ page: 1, limit: FEATURED_LIMIT })
-      .then((data) => {
-        if (!cancelled) setProducts(data);
+      .then((result) => {
+        if (!cancelled) setProducts(result.products);
       })
       .catch(() => {
-        if (!cancelled) setError("Could not load products. Is the backend running?");
+        if (!cancelled) {
+          setError("Could not load products. Is the backend running?");
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -29,10 +31,6 @@ function Home({ search }) {
       cancelled = true;
     };
   }, []);
-
-  const filteredProducts = products.filter((product) =>
-    product.name.toLowerCase().includes(search.toLowerCase())
-  );
 
   return (
     <>
@@ -73,32 +71,40 @@ function Home({ search }) {
         </div>
       </section>
 
-      {/* SHOP PREVIEW */}
-      <section id="shop" className="min-h-screen px-10 py-20">
-        <h2 className="text-3xl font-bold mb-10 text-center">Shop</h2>
+      {/* FEATURED PRODUCTS */}
+      <section id="shop" className="min-h-screen px-6 md:px-10 py-20">
+        <div className="text-center">
+          <h2 className="text-3xl font-bold">Shop</h2>
+          <p className="text-gray-400 mt-2">
+            Fresh picks from the latest collection.
+          </p>
+        </div>
 
         {loading ? (
-          <p className="text-center text-gray-400">Loading products...</p>
+          <p className="text-center text-gray-400 mt-10">
+            Loading products...
+          </p>
         ) : error ? (
-          <p className="text-center text-red-400">{error}</p>
-        ) : filteredProducts.length === 0 ? (
-          <p className="text-center text-gray-400">No products found 😢</p>
+          <p className="text-center text-red-400 mt-10">{error}</p>
+        ) : products.length === 0 ? (
+          <p className="text-center text-gray-400 mt-10">
+            No products found 😢
+          </p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {filteredProducts.map((product) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 mt-10">
+            {products.map((product) => (
               <ProductCard key={product.id} product={product} />
             ))}
           </div>
         )}
 
         <div className="text-center mt-12">
-          <button
-            type="button"
-            onClick={() => navigate("/shop")}
-            className="px-8 py-3 rounded-full border border-cyan-400 text-cyan-400 font-semibold hover:bg-cyan-400 hover:text-black transition"
+          <Link
+            to="/shop"
+            className="inline-block px-8 py-3 rounded-full border border-cyan-400 text-cyan-400 font-semibold hover:bg-cyan-400 hover:text-black transition"
           >
             View all products
-          </button>
+          </Link>
         </div>
       </section>
     </>

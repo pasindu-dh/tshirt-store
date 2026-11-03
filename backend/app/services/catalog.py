@@ -70,6 +70,17 @@ def get_product(
     return db.scalar(_product_query(filters))
 
 
+def get_product_by_slug(
+    db: Session, slug: str, *, active_only: bool = False
+) -> Product | None:
+    filters = [Product.slug == slug]
+
+    if active_only:
+        filters.append(Product.is_active.is_(True))
+
+    return db.scalar(_product_query(filters))
+
+
 def get_category(db: Session, category_id: int) -> Category | None:
     return db.get(Category, category_id)
 

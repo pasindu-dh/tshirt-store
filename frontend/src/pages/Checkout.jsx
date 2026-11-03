@@ -27,24 +27,37 @@ function Checkout() {
 
       <div className="max-w-2xl mx-auto">
         <div className="bg-[#020617] border border-gray-800 rounded-2xl p-6 space-y-4">
-          {cart.map((item) => (
-            <div key={item.id} className="flex items-center gap-4">
-              <img
-                src={imageUrl(item.image)}
-                alt={item.name}
-                className="w-16 h-16 object-cover rounded"
-              />
+          {cart.map((item) => {
+            const variantLabel = [item.color, item.size]
+              .filter(Boolean)
+              .join(" / ");
 
-              <div className="flex-1">
-                <p>{item.name}</p>
-                <p className="text-sm text-gray-400">Qty: {item.quantity}</p>
+            return (
+              <div key={item.key} className="flex items-center gap-4">
+                <img
+                  src={imageUrl(item.image)}
+                  alt={item.name}
+                  className="w-16 h-16 object-cover rounded"
+                />
+
+                <div className="flex-1">
+                  <p>{item.name}</p>
+
+                  {variantLabel && (
+                    <p className="text-xs text-gray-500">{variantLabel}</p>
+                  )}
+
+                  <p className="text-sm text-gray-400">
+                    Qty: {item.quantity}
+                  </p>
+                </div>
+
+                <p className="text-cyan-400">
+                  LKR {item.price * item.quantity}
+                </p>
               </div>
-
-              <p className="text-cyan-400">
-                LKR {item.price * item.quantity}
-              </p>
-            </div>
-          ))}
+            );
+          })}
 
           <hr className="border-gray-800" />
 

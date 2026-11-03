@@ -11,6 +11,7 @@ import Forbidden from "./pages/Forbidden";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
+import ProductDetail from "./pages/ProductDetail";
 import Register from "./pages/Register";
 import Shop from "./pages/Shop";
 import AdminCategories from "./pages/admin/AdminCategories";
@@ -31,8 +32,12 @@ function App() {
         <Cart />
 
         <Routes>
-          <Route path="/" element={<Home search={search} />} />
-          <Route path="/shop" element={<Shop search={search} />} />
+          <Route path="/" element={<Home />} />
+          <Route
+            path="/shop"
+            element={<Shop search={search} setSearch={setSearch} />}
+          />
+          <Route path="/product/:slug" element={<ProductDetail />} />
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/checkout" element={<Checkout />} />
