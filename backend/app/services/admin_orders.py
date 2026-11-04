@@ -13,6 +13,7 @@ from app.models import (
     Refund,
     ReturnRequest,
 )
+from app.models.common import utcnow
 from app.schemas.order import AdminOrderStatsOut, OrderStatusUpdate
 from app.services.payment_events import record_event
 from app.services.reporting import (
@@ -169,6 +170,8 @@ def update_status(
 
         if order.payment_method == "cod":
             order.payment_status = "paid"
+
+        order.delivered_at = utcnow()
 
     order.status = new_status
 

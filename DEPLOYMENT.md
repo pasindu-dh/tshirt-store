@@ -87,6 +87,8 @@ The image includes a `HEALTHCHECK` against `/health/ready`.
 | `FRONTEND_ORIGINS` | Comma-separated production frontend origins, no trailing slash |
 | `UPLOADS_DIR` | Directory on a persistent disk, for example `/var/data/uploads` |
 | `SHIPPING_FEE_LKR` | Optional checkout shipping fee |
+| `RETURN_WINDOW_DAYS` | Days after delivery in which customers can request a return (default 30); `0` disables the deadline |
+| `RETURN_POLICY_TEXT` | Customer-facing return-condition text returned by `/returns/policy` |
 | `ONLINE_PAYMENT_RESERVATION_MINUTES` | Unpaid online order stock reservation window; `0` disables expiry |
 | `STOCK_RESERVATION_SWEEP_ENABLED` | In-process reservation sweeper; set `false` if using the cron command |
 | `STOCK_RESERVATION_SWEEP_SECONDS` | Sweeper interval, minimum 10 seconds |
@@ -296,12 +298,15 @@ Reports page provides the same figures with date filters and daily/monthly
 grouping. The product-performance report uses delivered paid/refunded order
 line items, completed returns for return rates, and current active stock for
 stock value. Customer self-service returns are
-item-level: customers choose item quantities on a delivered order and can
-cancel a pending request. Admins approve or reject requests; marking an
-approved return completed restocks the returned variant quantities exactly
-once. Admins can link an existing refund record to an approved or completed
-return. Status emails are sent for requested, approved, rejected, completed,
-and cancelled returns when SMTP is configured.
+item-level: customers choose a structured reason and item quantities on a
+delivered order and can cancel a pending request. Return requests are rejected
+after `RETURN_WINDOW_DAYS` from the recorded delivery timestamp; set `0` to
+disable the deadline. The policy text and reason list are served at
+`/returns/policy`. Admins approve or reject requests; marking an approved
+return completed restocks the returned variant quantities exactly once. Admins
+can link an existing refund record to an approved or completed return. Status
+emails are sent for requested, approved, rejected, completed, and cancelled
+returns when SMTP is configured.
 
 ### Stock reservation expiry
 

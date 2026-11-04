@@ -15,6 +15,7 @@ import {
 } from "../../api/adminOrders";
 import OrderStatusBadge from "../../components/OrderStatusBadge";
 import { getApiError } from "../../utils/errors";
+import { RETURN_REASON_LABELS } from "../../utils/returns";
 
 const STATUS_ACTIONS = {
   pending: [
@@ -543,6 +544,11 @@ function AdminOrderDetail({ orderId }) {
           <p className="text-sm text-gray-400 mt-1">
             Placed {formatDate(order.created_at)}
           </p>
+          {order.delivered_at && (
+            <p className="text-sm text-gray-400 mt-1">
+              Delivered {formatDate(order.delivered_at)}
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
@@ -1135,6 +1141,13 @@ function AdminOrderDetail({ orderId }) {
                       </span>
                     </div>
 
+                    {request.reason_code && (
+                      <p className="text-xs text-cyan-400">
+                        {RETURN_REASON_LABELS[
+                          request.reason_code
+                        ] ?? request.reason_code}
+                      </p>
+                    )}
                     <p className="text-sm text-gray-300">
                       {request.reason}
                     </p>

@@ -9,6 +9,27 @@ from pydantic import (
 )
 
 
+ReturnReasonCode = Literal[
+    "size_fit",
+    "damaged",
+    "wrong_item",
+    "not_as_described",
+    "changed_mind",
+    "other",
+]
+
+
+class ReturnReasonOut(BaseModel):
+    code: str
+    label: str
+
+
+class ReturnPolicyOut(BaseModel):
+    window_days: int
+    policy_text: str
+    reasons: list[ReturnReasonOut]
+
+
 class ReturnItemCreate(BaseModel):
     order_item_id: int = Field(gt=0)
     quantity: int = Field(ge=1)
@@ -20,6 +41,7 @@ class ReturnRequestCreate(BaseModel):
     items: list[ReturnItemCreate] = Field(
         min_length=1, max_length=50
     )
+    reason_code: ReturnReasonCode = "other"
     reason: str = Field(min_length=3, max_length=500)
     notes: str = Field(default="", max_length=1000)
 
@@ -82,6 +104,7 @@ class ReturnRequestOut(BaseModel):
     order_id: int
     user_id: int
     status: str
+    reason_code: str
     reason: str
     notes: str
     refund_id: int | None
@@ -101,6 +124,7 @@ class AdminReturnQueueOut(BaseModel):
     id: int
     order_id: int
     status: str
+    reason_code: str
     reason: str
     created_at: datetime
     order_contact_name: str

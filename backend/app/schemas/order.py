@@ -57,6 +57,7 @@ class OrderOut(BaseModel):
     notes: str
     created_at: datetime
     reservation_expires_at: datetime | None = None
+    delivered_at: datetime | None = None
     stock_released_at: datetime | None = None
     stock_release_reason: str = ""
     items: list[OrderItemOut]

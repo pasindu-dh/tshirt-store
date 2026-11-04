@@ -1,6 +1,9 @@
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.config import settings
 from app.models import (
     Order,
     OrderItem,
@@ -20,6 +23,45 @@ from app.schemas.return_request import (
 from app.services.inventory import record_stock_movement
 
 RETURNED_STATUSES = ("requested", "approved", "completed")
+
+RETURN_REASONS = (
+    ("size_fit", "Size or fit"),
+    ("damaged", "Item arrived damaged"),
+    ("wrong_item", "Wrong item received"),
+    ("not_as_described", "Not as described"),
+    ("changed_mind", "Changed my mind"),
+    ("other", "Other"),
+)
+
+
+def _ensure_return_window(order: Order) -> None:
+    from fastapi import HTTPException, status
+
+    if settings.return_window_days <= 0:
+        return
+
+    delivered_at = order.delivered_at or order.updated_at
+
+    if delivered_at is None:
+        return
+
+    if delivered_at.tzinfo is None:
+        delivered_at = delivered_at.replace(
+            tzinfo=timezone.utc
+        )
+
+    deadline = delivered_at + timedelta(
+        days=settings.return_window_days
+    )
+
+    if utcnow() > deadline:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Returns are accepted within "
+                f"{settings.return_window_days} days of delivery."
+            ),
+        )
 
 
 def _return_query(order_id: int):
@@ -118,6 +160,8 @@ def create_return_request(
             ),
         )
 
+    _ensure_return_window(order)
+
     active = db.scalar(
         select(ReturnRequest).where(
             ReturnRequest.order_id == order.id,
@@ -176,6 +220,7 @@ def create_return_request(
         order_id=order.id,
         user_id=user.id,
         status="requested",
+        reason_code=payload.reason_code,
         reason=payload.reason.strip(),
         notes=payload.notes.strip(),
         items=items,
@@ -457,6 +502,7 @@ def list_admin_returns(
             id=request.id,
             order_id=request.order_id,
             status=request.status,
+            reason_code=request.reason_code,
             reason=request.reason,
             created_at=request.created_at,
             order_contact_name=order.contact_name,

@@ -7,6 +7,7 @@ import {
 import { getAdminReturns } from "../../api/adminOrders";
 import ExportCsvButton from "../../components/admin/ExportCsvButton";
 import { getApiError } from "../../utils/errors";
+import { RETURN_REASON_LABELS } from "../../utils/returns";
 
 const PAGE_SIZE = 10;
 const STATUS_OPTIONS = [
@@ -246,6 +247,13 @@ function AdminReturns() {
                   </td>
 
                   <td className="p-4 text-gray-400 max-w-[220px]">
+                    {request.reason_code && (
+                      <span className="block text-xs text-cyan-400">
+                        {RETURN_REASON_LABELS[
+                          request.reason_code
+                        ] ?? request.reason_code}
+                      </span>
+                    )}
                     <span className="line-clamp-2">
                       {request.reason}
                     </span>

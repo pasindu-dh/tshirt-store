@@ -6,6 +6,7 @@ import {
   cancelOrderReturn,
   createOrderReturn,
   getOrderReturns,
+  getReturnPolicy,
 } from "../api/returns";
 import {
   completeMockPayment,
@@ -14,6 +15,12 @@ import {
 } from "../api/payments";
 import OrderStatusBadge from "../components/OrderStatusBadge";
 import { getApiError } from "../utils/errors";
+import {
+  FALLBACK_RETURN_REASONS,
+  RETURN_REASON_LABELS,
+  getReturnDeadline,
+  isReturnWindowOpen,
+} from "../utils/returns";
 
 function formatDate(value) {
   return new Date(value).toLocaleDateString(undefined, {
@@ -57,6 +64,10 @@ function OrderDetail({ orderId }) {
   const [returnMessage, setReturnMessage] = useState("");
   const [returnQuantities, setReturnQuantities] = useState({});
   const [returnCancellingId, setReturnCancellingId] = useState(null);
+  const [returnReasonCode, setReturnReasonCode] =
+    useState("size_fit");
+  const [returnPolicy, setReturnPolicy] = useState(null);
+  const [returnPolicyError, setReturnPolicyError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -111,10 +122,38 @@ function OrderDetail({ orderId }) {
     };
   }, [orderId]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    getReturnPolicy()
+      .then((data) => {
+        if (!cancelled) setReturnPolicy(data);
+      })
+      .catch((requestError) => {
+        if (!cancelled) {
+          setReturnPolicyError(
+            getApiError(
+              requestError,
+              "Could not load the return policy."
+            )
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const handleReturnSubmit = async (event) => {
     event.preventDefault();
     setReturnMessage("");
     setReturnsError("");
+
+    if (!returnReasonCode) {
+      setReturnsError("Choose a reason for the return.");
+      return;
+    }
 
     if (returnReason.trim().length < 3) {
       setReturnsError("Describe the reason for the return.");
@@ -142,6 +181,7 @@ function OrderDetail({ orderId }) {
 
     try {
       await createOrderReturn(orderId, {
+        reason_code: returnReasonCode,
         reason: returnReason.trim(),
         notes: returnNotes.trim(),
         items,
@@ -151,6 +191,7 @@ function OrderDetail({ orderId }) {
       setReturnReason("");
       setReturnNotes("");
       setReturnQuantities({});
+      setReturnReasonCode("size_fit");
       setReturnMessage("Return request submitted.");
     } catch (requestError) {
       setReturnsError(
@@ -313,10 +354,23 @@ function OrderDetail({ orderId }) {
       remaining: item.quantity - (returnedByItem[item.id] ?? 0),
     }))
     .filter((item) => item.remaining > 0);
+  const availableReturnReasons =
+    returnPolicy?.reasons?.length > 0
+      ? returnPolicy.reasons
+      : FALLBACK_RETURN_REASONS;
+  const returnDeadline = getReturnDeadline(
+    order.delivered_at,
+    returnPolicy?.window_days ?? 0
+  );
+  const returnWindowOpen = isReturnWindowOpen(
+    order.delivered_at,
+    returnPolicy?.window_days ?? 0
+  );
   const canRequestReturn =
     order.status === "delivered" &&
     !activeReturn &&
-    returnableItems.length > 0;
+    returnableItems.length > 0 &&
+    returnWindowOpen;
 
   return (
     <div className="min-h-screen px-6 md:px-10 pb-20 pt-10">
@@ -339,6 +393,11 @@ function OrderDetail({ orderId }) {
             <p className="text-sm text-gray-400 mt-1">
               Placed {formatDate(order.created_at)}
             </p>
+            {order.delivered_at && (
+              <p className="text-sm text-gray-400 mt-1">
+                Delivered {formatDate(order.delivered_at)}
+              </p>
+            )}
           </div>
 
           <div className="flex items-center gap-3">
@@ -563,6 +622,31 @@ function OrderDetail({ orderId }) {
             the items and quantities you want to send back.
           </p>
 
+          <div className="mt-3 rounded-xl border border-gray-800 bg-black/30 p-3 text-xs text-gray-400">
+            {returnPolicy ? (
+              <>
+                <p className="text-gray-300">
+                  {returnPolicy.window_days > 0
+                    ? `Returns are accepted within ${returnPolicy.window_days} days of delivery.`
+                    : "Returns are accepted after delivery."}
+                </p>
+                <p className="mt-1">{returnPolicy.policy_text}</p>
+              </>
+            ) : returnPolicyError ? (
+              <p className="text-yellow-400">
+                {returnPolicyError}
+              </p>
+            ) : (
+              <p>Loading return policy...</p>
+            )}
+
+            {returnDeadline && (
+              <p className="mt-1 text-gray-500">
+                Return window ends {formatDate(returnDeadline)}.
+              </p>
+            )}
+          </div>
+
           {returnsLoading ? (
             <p className="text-sm text-gray-400 mt-4">
               Loading return requests...
@@ -590,6 +674,13 @@ function OrderDetail({ orderId }) {
                           {request.status}
                         </span>
                       </div>
+                      {request.reason_code && (
+                        <p className="text-xs text-cyan-400 mt-2">
+                          {RETURN_REASON_LABELS[
+                            request.reason_code
+                          ] ?? request.reason_code}
+                        </p>
+                      )}
                       <p className="text-sm text-gray-300 mt-2">
                         {request.reason}
                       </p>
@@ -714,7 +805,26 @@ function OrderDetail({ orderId }) {
                     ))}
                   </fieldset>
                   <label className="block text-sm text-gray-300">
-                    Reason for return
+                    Reason
+                    <select
+                      value={returnReasonCode}
+                      onChange={(event) =>
+                        setReturnReasonCode(event.target.value)
+                      }
+                      className="mt-1 w-full p-3 rounded-lg bg-black border border-gray-700 outline-none focus:border-cyan-400"
+                    >
+                      {availableReturnReasons.map((reason) => (
+                        <option
+                          key={reason.code}
+                          value={reason.code}
+                        >
+                          {reason.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block text-sm text-gray-300">
+                    Return details
                     <textarea
                       value={returnReason}
                       onChange={(event) =>
@@ -766,6 +876,14 @@ function OrderDetail({ orderId }) {
               ) : returnableItems.length === 0 ? (
                 <p className="text-sm text-gray-400 mt-4">
                   Every item from this order has already been returned.
+                </p>
+              ) : !returnWindowOpen ? (
+                <p className="text-sm text-gray-400 mt-4">
+                  {returnDeadline
+                    ? `The return window closed on ${formatDate(
+                        returnDeadline
+                      )}.`
+                    : "The return window has closed."}
                 </p>
               ) : null}
 

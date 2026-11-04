@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -8,7 +9,7 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
     app_name: str = "FURZY T-Shirt Store API"
-    app_version: str = "0.10.0"
+    app_version: str = "0.11.0"
     app_env: str = "development"
 
     # Default to an absolute path so the database location never depends on CWD.
@@ -20,6 +21,15 @@ class Settings(BaseSettings):
 
     # Store checkout settings.
     shipping_fee_lkr: int = 350
+
+    # Customer returns. A window of 0 disables the deadline.
+    return_window_days: int = Field(
+        default=30, ge=0, le=3650
+    )
+    return_policy_text: str = (
+        "Items must be unworn, unwashed, and in their original "
+        "condition with tags attached."
+    )
 
     frontend_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 

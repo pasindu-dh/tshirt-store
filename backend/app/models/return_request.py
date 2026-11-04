@@ -22,6 +22,9 @@ class ReturnRequest(Base):
     status: Mapped[str] = mapped_column(
         String(20), default="requested", index=True
     )
+    reason_code: Mapped[str] = mapped_column(
+        String(30), default="other", server_default="other"
+    )
     reason: Mapped[str] = mapped_column(String(500))
     notes: Mapped[str] = mapped_column(
         Text, default="", server_default=""

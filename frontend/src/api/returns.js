@@ -21,3 +21,8 @@ export async function cancelOrderReturn(orderId, returnId) {
   );
   return data;
 }
+
+export async function getReturnPolicy() {
+  const { data } = await client.get("/returns/policy");
+  return data;
+}
