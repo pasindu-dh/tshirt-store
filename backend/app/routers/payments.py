@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -10,6 +10,7 @@ from app.schemas.payment import (
     PaymentStatusOut,
 )
 from app.services import payments as payment_service
+from app.services.email import send_payment_confirmation
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
@@ -37,19 +38,49 @@ def create_payment_session(
 )
 def complete_mock_payment(
     order_id: int,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return payment_service.complete_mock_payment(
+    result = payment_service.complete_mock_payment(
         db, current_user, order_id
+    )
+
+    if result.newly_paid:
+        background_tasks.add_task(
+            send_payment_confirmation,
+            result.contact_email,
+            result.order_id,
+            result.contact_name,
+            result.total,
+            result.reference,
+        )
+
+    return PaymentStatusOut(
+        order_id=result.order_id,
+        reference=result.reference,
+        status=result.status,
     )
 
 
 @router.post("/payhere/notify")
 async def payhere_notify(
     request: Request,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     form = await request.form()
     payload = {key: str(value) for key, value in form.items()}
-    return payment_service.process_payhere_notification(db, payload)
+    result = payment_service.process_payhere_notification(db, payload)
+
+    if result.newly_paid and result.contact_email:
+        background_tasks.add_task(
+            send_payment_confirmation,
+            result.contact_email,
+            result.order_id,
+            result.contact_name,
+            result.total,
+            result.reference,
+        )
+
+    return {"status": result.response_status}

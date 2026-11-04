@@ -1,11 +1,14 @@
+import asyncio
 import logging
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.config import settings
+from app.config import settings, validate_payment_security
+from app.database import SessionLocal
 from app.routers import (
     admin,
     admin_coupons,
@@ -22,6 +25,7 @@ from app.routers import (
     uploads,
     wishlist,
 )
+from app.services.stock import expire_unpaid_online_orders
 
 logger = logging.getLogger("furzy")
 
@@ -29,6 +33,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 IMAGES_DIR = BASE_DIR / "images"
 UPLOADS_DIR = Path(settings.uploads_dir)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+validate_payment_security(settings)
 
 if (
     len(settings.jwt_secret) < 32
@@ -60,14 +66,56 @@ elif settings.normalized_payment_provider not in {
         "Unknown PAYMENT_PROVIDER value; online payments are disabled."
     )
 
+
+def _expire_reservations_once() -> None:
+    with SessionLocal() as db:
+        expired = expire_unpaid_online_orders(db)
+
+        if expired:
+            logger.info(
+                "Expired %s unpaid online order reservation(s).",
+                expired,
+            )
+
+
+async def _reservation_sweeper() -> None:
+    interval = max(10, settings.stock_reservation_sweep_seconds)
+
+    while True:
+        await asyncio.sleep(interval)
+
+        try:
+            await asyncio.to_thread(_expire_reservations_once)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Stock reservation sweep failed.")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    task = None
+
+    if settings.stock_reservation_sweep_enabled:
+        task = asyncio.create_task(_reservation_sweeper())
+
+    try:
+        yield
+    finally:
+        if task is not None:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description=(
-        "Catalog, authentication, cart, and order API for the FURZY "
-        "T-shirt store. Admin routes require a bearer token with the "
-        "admin role."
+        "Catalog, authentication, cart, order, and payment API for "
+        "the FURZY T-shirt store. Admin routes require a bearer token "
+        "with the admin role."
     ),
+    lifespan=lifespan,
 )
 
 app.add_middleware(

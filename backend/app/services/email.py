@@ -50,15 +50,71 @@ def send_order_confirmation(
     order_id: int,
     contact_name: str,
     total: int,
+    payment_method: str,
+    payment_status: str,
+) -> bool:
+    if payment_method == "online" and payment_status == "paid":
+        subject = f"FURZY order #{order_id} confirmed and paid"
+        body = (
+            f"Hi {contact_name},\n\n"
+            f"Your FURZY order #{order_id} is confirmed and paid. "
+            f"Total: LKR {total}.\n\n"
+            "We will notify you when it is shipped.\n\n"
+            "FURZY"
+        )
+    elif payment_method == "online" and payment_status == "failed":
+        subject = f"FURZY order #{order_id} received - payment failed"
+        body = (
+            f"Hi {contact_name},\n\n"
+            f"Your FURZY order #{order_id} has been received, but "
+            "the online payment did not succeed. The order remains "
+            f"pending. Total: LKR {total}.\n\n"
+            "You can retry payment from your order page.\n\n"
+            "FURZY"
+        )
+    elif payment_method == "online":
+        subject = (
+            f"FURZY order #{order_id} received - payment pending"
+        )
+        body = (
+            f"Hi {contact_name},\n\n"
+            f"We received your FURZY order #{order_id}. "
+            "Your online payment has not been confirmed yet. "
+            f"Total: LKR {total}.\n\n"
+            "Complete payment from your order page. We will send a "
+            "separate confirmation once payment is verified.\n\n"
+            "FURZY"
+        )
+    else:
+        subject = f"FURZY order #{order_id} confirmed"
+        body = (
+            f"Hi {contact_name},\n\n"
+            f"Thank you for your order #{order_id}. "
+            f"Your total is LKR {total} and payment is due on "
+            "delivery (Cash on Delivery).\n\n"
+            "We will update you when your order is shipped.\n\n"
+            "FURZY"
+        )
+
+    return _send_email(to_email, subject, body)
+
+
+def send_payment_confirmation(
+    to_email: str,
+    order_id: int,
+    contact_name: str,
+    total: int,
+    reference: str,
 ) -> bool:
     return _send_email(
         to_email,
-        f"FURZY order #{order_id} confirmed",
+        f"Payment received for FURZY order #{order_id}",
         (
             f"Hi {contact_name},\n\n"
-            f"Thank you for your order #{order_id}. "
-            f"Your total is LKR {total}.\n\n"
-            "We will update you when your order is confirmed and shipped.\n\n"
+            f"We have verified your payment of LKR {total} for "
+            f"FURZY order #{order_id}.\n"
+            f"Reference: {reference}\n\n"
+            "Thank you.\n\n"
             "FURZY"
         ),
     )

@@ -37,6 +37,8 @@ def create_order(
         order.id,
         order.contact_name,
         order.total,
+        order.payment_method,
+        order.payment_status,
     )
 
     return order

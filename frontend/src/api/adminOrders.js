@@ -16,6 +16,25 @@ export async function getAdminOrder(orderId) {
   return data;
 }
 
+export async function getAdminOrderPayments(orderId) {
+  const { data } = await client.get(
+    `/admin/orders/${orderId}/payments`
+  );
+  return data;
+}
+
+export async function reconcileAdminPayment(
+  orderId,
+  paymentId,
+  payload
+) {
+  const { data } = await client.post(
+    `/admin/orders/${orderId}/payments/${paymentId}/reconcile`,
+    payload
+  );
+  return data;
+}
+
 export async function updateAdminOrderStatus(orderId, status) {
   const { data } = await client.patch(
     `/admin/orders/${orderId}/status`,

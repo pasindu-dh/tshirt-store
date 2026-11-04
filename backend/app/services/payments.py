@@ -1,25 +1,65 @@
 import hashlib
 import hmac
 import logging
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from uuid import uuid4
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
 from app.models import Order, Payment, User
 from app.models.common import utcnow
 from app.schemas.payment import (
+    ManualReconciliationRequest,
     PaymentConfigOut,
     PaymentSessionOut,
     PaymentStatusOut,
 )
+from app.services.payment_events import record_event
 
 logger = logging.getLogger("furzy.payments")
 
 PAYHERE_SANDBOX_URL = "https://sandbox.payhere.lk/pay/checkout"
 PAYHERE_LIVE_URL = "https://www.payhere.lk/pay/checkout"
+
+PAYHERE_STATUS_MAP = {
+    "2": "paid",
+    "0": "pending",
+    "-1": "cancelled",
+    "-2": "failed",
+    "-3": "chargedback",
+}
+
+
+@dataclass
+class PaymentCompletionResult:
+    order_id: int
+    reference: str
+    status: str
+    newly_paid: bool
+    contact_email: str
+    contact_name: str
+    total: int
+
+
+@dataclass
+class PaymentNotificationResult:
+    response_status: str
+    newly_paid: bool = False
+    order_id: int | None = None
+    contact_email: str = ""
+    contact_name: str = ""
+    total: int = 0
+    reference: str = ""
+
+
+@dataclass
+class ReconciliationResult:
+    payment: Payment
+    newly_paid: bool
+    order: Order
 
 
 def _md5_upper(value: str) -> str:
@@ -64,7 +104,9 @@ def get_config() -> PaymentConfigOut:
         online_enabled=settings.online_payments_enabled,
         currency=settings.payment_currency.strip().upper(),
         mock_enabled=(
-            provider == "mock" and settings.payment_mock_enabled
+            provider == "mock"
+            and settings.payment_mock_enabled
+            and not settings.is_production
         ),
     )
 
@@ -83,6 +125,14 @@ def _require_order(
         )
 
     return order
+
+
+def _lock_order(db: Session, order_id: int) -> Order | None:
+    return db.scalar(
+        select(Order)
+        .where(Order.id == order_id)
+        .with_for_update()
+    )
 
 
 def _payhere_fields(order: Order, payment: Payment) -> dict[str, str]:
@@ -136,12 +186,29 @@ def create_session(
     from fastapi import HTTPException, status
 
     order = _require_order(db, user, order_id)
+    provider = settings.normalized_payment_provider
 
     if not settings.online_payments_enabled:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Online payments are not configured.",
         )
+
+    if provider not in {"payhere", "mock"}:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Online payments are not configured.",
+        )
+
+    locked_order = _lock_order(db, order.id)
+
+    if locked_order is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found",
+        )
+
+    order = locked_order
 
     if order.payment_method != "online":
         raise HTTPException(
@@ -161,7 +228,12 @@ def create_session(
             detail="This order is already paid.",
         )
 
-    provider = settings.normalized_payment_provider
+    if order.payment_status == "chargedback":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This order has a chargedback payment.",
+        )
+
     reference = f"FURZY-{order.id}-{uuid4().hex[:12].upper()}"
     payment = Payment(
         order_id=order.id,
@@ -172,6 +244,14 @@ def create_session(
         status="pending",
     )
     db.add(payment)
+    db.flush()
+    record_event(
+        db,
+        payment,
+        status="pending",
+        source="session",
+        note="Hosted checkout session created.",
+    )
     db.commit()
     db.refresh(payment)
 
@@ -183,15 +263,10 @@ def create_session(
         )
         fields = _payhere_fields(order, payment)
         mock = False
-    elif provider == "mock":
+    else:
         action_url = None
         fields = {}
         mock = True
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Online payments are not configured.",
-        )
 
     return PaymentSessionOut(
         provider=provider,
@@ -207,12 +282,13 @@ def create_session(
 
 def complete_mock_payment(
     db: Session, user: User, order_id: int
-) -> PaymentStatusOut:
+) -> PaymentCompletionResult:
     from fastapi import HTTPException, status
 
     if (
         settings.normalized_payment_provider != "mock"
         or not settings.payment_mock_enabled
+        or settings.is_production
     ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -220,6 +296,33 @@ def complete_mock_payment(
         )
 
     order = _require_order(db, user, order_id)
+    locked_order = _lock_order(db, order.id)
+
+    if locked_order is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found",
+        )
+
+    order = locked_order
+
+    if order.payment_method != "online":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This order does not use online payment.",
+        )
+
+    if order.payment_status == "chargedback":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This order has a chargedback payment.",
+        )
+
+    if order.status == "cancelled" or order.stock_released_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This order has expired or was cancelled.",
+        )
 
     payment = db.scalar(
         select(Payment)
@@ -229,6 +332,7 @@ def complete_mock_payment(
             Payment.status == "pending",
         )
         .order_by(Payment.id.desc())
+        .with_for_update()
     )
 
     if payment is None:
@@ -243,10 +347,14 @@ def complete_mock_payment(
         )
 
         if paid_payment is not None and order.payment_status == "paid":
-            return PaymentStatusOut(
+            return PaymentCompletionResult(
                 order_id=order.id,
                 reference=paid_payment.reference,
                 status=paid_payment.status,
+                newly_paid=False,
+                contact_email=order.contact_email,
+                contact_name=order.contact_name,
+                total=order.total,
             )
 
         raise HTTPException(
@@ -258,18 +366,30 @@ def complete_mock_payment(
     payment.paid_at = utcnow()
     payment.provider_payment_id = f"mock-{payment.id}"
     order.payment_status = "paid"
+    record_event(
+        db,
+        payment,
+        status="paid",
+        source="mock",
+        status_code="mock",
+        note="Mock payment completed.",
+    )
     db.commit()
 
-    return PaymentStatusOut(
+    return PaymentCompletionResult(
         order_id=order.id,
         reference=payment.reference,
         status=payment.status,
+        newly_paid=True,
+        contact_email=order.contact_email,
+        contact_name=order.contact_name,
+        total=order.total,
     )
 
 
 def process_payhere_notification(
     db: Session, payload: dict[str, str]
-) -> dict[str, str]:
+) -> PaymentNotificationResult:
     from fastapi import HTTPException, status
 
     provider = settings.normalized_payment_provider
@@ -309,15 +429,35 @@ def process_payhere_notification(
             detail="Invalid payment signature.",
         )
 
-    payment = db.scalar(
+    payment_lookup = db.scalar(
         select(Payment).where(Payment.reference == order_id)
     )
 
-    if payment is None:
+    if payment_lookup is None:
         logger.warning(
             "PayHere notification for an unknown payment reference."
         )
-        return {"status": "ignored"}
+        return PaymentNotificationResult(
+            response_status="ignored", reference=order_id
+        )
+
+    # Lock the order before the payment so this path uses the same lock
+    # order as reservation expiry and manual reconciliation.
+    order = db.scalar(
+        select(Order)
+        .where(Order.id == payment_lookup.order_id)
+        .with_for_update()
+    )
+    payment = db.scalar(
+        select(Payment)
+        .where(Payment.reference == order_id)
+        .with_for_update()
+    )
+
+    if payment is None:
+        return PaymentNotificationResult(
+            response_status="ignored", reference=order_id
+        )
 
     if currency != payment.currency:
         raise HTTPException(
@@ -339,14 +479,7 @@ def process_payhere_notification(
             detail="Payment amount mismatch.",
         )
 
-    status_map = {
-        "2": "paid",
-        "0": "pending",
-        "-1": "cancelled",
-        "-2": "failed",
-        "-3": "chargedback",
-    }
-    next_status = status_map.get(status_code)
+    next_status = PAYHERE_STATUS_MAP.get(status_code)
 
     if next_status is None:
         raise HTTPException(
@@ -354,30 +487,154 @@ def process_payhere_notification(
             detail="Unknown payment status.",
         )
 
-    order = db.get(Order, payment.order_id)
-
-    if payment.status == "paid" and next_status != "paid":
-        return {"status": "ignored"}
-
-    payment.provider_payment_id = payload.get(
+    provider_payment_id = payload.get(
         "payment_id", payment.provider_payment_id
     )
 
+    if payment.status == "chargedback":
+        if next_status == "chargedback":
+            return PaymentNotificationResult(
+                response_status="ok",
+                order_id=order.id if order else None,
+                reference=payment.reference,
+            )
+
+        return PaymentNotificationResult(
+            response_status="ignored",
+            order_id=order.id if order else None,
+            reference=payment.reference,
+        )
+
+    if payment.status == "paid" and next_status != "paid":
+        if next_status != "chargedback":
+            return PaymentNotificationResult(
+                response_status="ignored",
+                order_id=order.id if order else None,
+                reference=payment.reference,
+            )
+
+        payment.status = "chargedback"
+        payment.provider_payment_id = provider_payment_id
+
+        if order is not None:
+            order.payment_status = "chargedback"
+
+        record_event(
+            db,
+            payment,
+            status="chargedback",
+            source="payhere",
+            status_code=status_code,
+            provider_payment_id=provider_payment_id,
+            note="PayHere chargeback notification.",
+        )
+        db.commit()
+        logger.info(
+            "Processed PayHere chargeback for order %s.",
+            payment.order_id,
+        )
+        return PaymentNotificationResult(
+            response_status="ok",
+            order_id=order.id if order else None,
+            reference=payment.reference,
+        )
+
+    if next_status == "chargedback":
+        return PaymentNotificationResult(
+            response_status="ignored",
+            order_id=order.id if order else None,
+            reference=payment.reference,
+        )
+
     if next_status == "paid":
+        if payment.status == "paid":
+            payment.provider_payment_id = provider_payment_id
+            db.commit()
+            return PaymentNotificationResult(
+                response_status="ok",
+                order_id=order.id if order else None,
+                reference=payment.reference,
+            )
+
         payment.status = "paid"
+        payment.provider_payment_id = provider_payment_id
 
         if payment.paid_at is None:
             payment.paid_at = utcnow()
 
         if order is not None:
             order.payment_status = "paid"
-    elif next_status in {"failed", "cancelled", "chargedback"}:
-        payment.status = next_status
-        if order is not None and order.payment_status != "paid":
-            order.payment_status = "failed"
-    else:
-        payment.status = "pending"
 
+        record_event(
+            db,
+            payment,
+            status="paid",
+            source="payhere",
+            status_code=status_code,
+            provider_payment_id=provider_payment_id,
+            note="PayHere payment completed.",
+        )
+        db.commit()
+        logger.info(
+            "Processed PayHere payment for order %s.",
+            payment.order_id,
+        )
+        return PaymentNotificationResult(
+            response_status="ok",
+            newly_paid=True,
+            order_id=order.id if order else None,
+            contact_email=order.contact_email if order else "",
+            contact_name=order.contact_name if order else "",
+            total=order.total if order else payment.amount,
+            reference=payment.reference,
+        )
+
+    if next_status == "pending":
+        if payment.status != "pending":
+            return PaymentNotificationResult(
+                response_status="ignored",
+                order_id=order.id if order else None,
+                reference=payment.reference,
+            )
+
+        return PaymentNotificationResult(
+            response_status="ok",
+            order_id=order.id if order else None,
+            reference=payment.reference,
+        )
+
+    if payment.status in {"paid", "chargedback"}:
+        return PaymentNotificationResult(
+            response_status="ignored",
+            order_id=order.id if order else None,
+            reference=payment.reference,
+        )
+
+    if payment.status == next_status:
+        return PaymentNotificationResult(
+            response_status="ok",
+            order_id=order.id if order else None,
+            reference=payment.reference,
+        )
+
+    payment.status = next_status
+    payment.provider_payment_id = provider_payment_id
+
+    if order is not None and order.payment_status not in {
+        "paid",
+        "chargedback",
+    }:
+        order.payment_status = "failed"
+
+    record_event(
+        db,
+        payment,
+        status=next_status,
+        source="payhere",
+        status_code=status_code,
+        provider_payment_id=provider_payment_id,
+        note=f"PayHere notification: {next_status}.",
+    )
     db.commit()
     logger.info(
         "Processed PayHere notification for order %s with status %s.",
@@ -385,4 +642,139 @@ def process_payhere_notification(
         next_status,
     )
 
-    return {"status": "ok"}
+    return PaymentNotificationResult(
+        response_status="ok",
+        order_id=order.id if order else None,
+        reference=payment.reference,
+    )
+
+
+def list_order_payments(
+    db: Session, order_id: int
+) -> list[Payment]:
+    return list(
+        db.scalars(
+            select(Payment)
+            .where(Payment.order_id == order_id)
+            .options(selectinload(Payment.events))
+            .order_by(Payment.id.desc())
+        ).all()
+    )
+
+
+def reconcile_payment(
+    db: Session,
+    admin_user: User,
+    order: Order,
+    payment_id: int,
+    payload: ManualReconciliationRequest,
+) -> ReconciliationResult:
+    from fastapi import HTTPException, status
+
+    locked_order = db.scalar(
+        select(Order)
+        .where(Order.id == order.id)
+        .with_for_update()
+    )
+
+    if locked_order is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found.",
+        )
+
+    order = locked_order
+    payment = db.scalar(
+        select(Payment)
+        .where(
+            Payment.id == payment_id,
+            Payment.order_id == order.id,
+        )
+        .with_for_update()
+    )
+
+    if payment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Payment not found for this order.",
+        )
+
+    current_status = payment.status
+    next_status = payload.status
+
+    if next_status == current_status:
+        if next_status == "paid" and payload.provider_payment_id:
+            payment.provider_payment_id = (
+                payload.provider_payment_id.strip()
+            )
+            db.commit()
+
+        return ReconciliationResult(
+            payment=payment,
+            newly_paid=False,
+            order=order,
+        )
+
+    if current_status == "chargedback":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Chargedback payments are final.",
+        )
+
+    if current_status == "paid" and next_status in {
+        "failed",
+        "cancelled",
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "A paid payment cannot be marked failed or cancelled; "
+                "use chargedback for a post-payment reversal."
+            ),
+        )
+
+    if next_status == "chargedback" and current_status != "paid":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A chargeback requires a paid payment.",
+        )
+
+    payment.status = next_status
+    payment.provider_payment_id = (
+        payload.provider_payment_id.strip()
+        or payment.provider_payment_id
+    )
+
+    if next_status == "paid" and payment.paid_at is None:
+        payment.paid_at = utcnow()
+
+    if next_status == "paid":
+        order.payment_status = "paid"
+    elif next_status == "chargedback":
+        order.payment_status = "chargedback"
+    elif order.payment_status not in {"paid", "chargedback"}:
+        order.payment_status = next_status
+
+    record_event(
+        db,
+        payment,
+        status=next_status,
+        source="manual",
+        status_code="manual",
+        provider_payment_id=payment.provider_payment_id,
+        note=payload.note.strip(),
+        actor_user_id=admin_user.id,
+    )
+    db.commit()
+
+    loaded = db.scalar(
+        select(Payment)
+        .where(Payment.id == payment.id)
+        .options(selectinload(Payment.events))
+    )
+
+    return ReconciliationResult(
+        payment=loaded or payment,
+        newly_paid=next_status == "paid",
+        order=order,
+    )

@@ -69,12 +69,15 @@ jobs:
       ADMIN_NAME: CI Admin
       ADMIN_EMAIL: admin@furzy.dev
       ADMIN_PASSWORD: E2EAdminPass123!
+      APP_ENV: test
       FRONTEND_ORIGINS: http://127.0.0.1:5173
       FRONTEND_BASE_URL: http://127.0.0.1:5173
       BACKEND_PUBLIC_URL: http://127.0.0.1:8005
       PAYMENT_PROVIDER: mock
       PAYMENT_MOCK_ENABLED: "true"
       PAYMENT_CURRENCY: LKR
+      ONLINE_PAYMENT_RESERVATION_MINUTES: "30"
+      STOCK_RESERVATION_SWEEP_ENABLED: "false"
       E2E_ADMIN_EMAIL: admin@furzy.dev
       E2E_ADMIN_PASSWORD: E2EAdminPass123!
       E2E_API_URL: http://127.0.0.1:8005

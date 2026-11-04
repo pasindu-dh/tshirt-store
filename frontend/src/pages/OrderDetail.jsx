@@ -61,7 +61,7 @@ function OrderDetail({ orderId }) {
     };
   }, [orderId]);
 
-  const refreshPaymentStatus = async () => {
+  const refreshOrderStatus = async () => {
     try {
       const data = await getOrder(orderId);
       setOrder(data);
@@ -70,7 +70,7 @@ function OrderDetail({ orderId }) {
       setPaymentError(
         getApiError(
           requestError,
-          "Could not refresh the payment status."
+          "Could not refresh the order status."
         )
       );
     }
@@ -92,7 +92,7 @@ function OrderDetail({ orderId }) {
 
       if (session.provider === "mock") {
         await completeMockPayment(order.id);
-        await refreshPaymentStatus();
+        await refreshOrderStatus();
         return;
       }
 
@@ -150,12 +150,13 @@ function OrderDetail({ orderId }) {
   const justPlaced = location.state?.justPlaced;
   const canPay =
     order.payment_method === "online" &&
-    order.payment_status !== "paid" &&
-    order.status !== "cancelled";
+    !["paid", "chargedback"].includes(order.payment_status) &&
+    order.status !== "cancelled" &&
+    !order.stock_released_at;
   const paymentTone =
     order.payment_status === "paid"
       ? "text-green-400"
-      : order.payment_status === "failed"
+      : ["failed", "chargedback"].includes(order.payment_status)
         ? "text-red-400"
         : "text-yellow-400";
 
@@ -297,6 +298,29 @@ function OrderDetail({ orderId }) {
                 Status: {order.payment_status}
               </p>
 
+              {order.payment_method === "online" &&
+                order.reservation_expires_at &&
+                order.payment_status !== "paid" &&
+                !order.stock_released_at && (
+                  <p className="text-xs text-yellow-400 mt-3">
+                    Complete payment by{" "}
+                    {formatDate(order.reservation_expires_at)}. After
+                    that the order will be cancelled and reserved
+                    stock released.
+                  </p>
+                )}
+
+              {order.stock_released_at && (
+                <p className="text-xs text-gray-500 mt-3">
+                  Reserved stock was released on{" "}
+                  {formatDate(order.stock_released_at)}
+                  {order.stock_release_reason
+                    ? ` (${order.stock_release_reason})`
+                    : ""}
+                  .
+                </p>
+              )}
+
               {paymentReturn === "return" &&
                 order.payment_status === "pending" && (
                   <p className="text-xs text-yellow-400 mt-3">
@@ -334,13 +358,21 @@ function OrderDetail({ orderId }) {
               {order.payment_method === "online" &&
                 order.payment_status !== "paid" &&
                 order.status !== "cancelled" && (
-                  <button
-                    type="button"
-                    onClick={refreshPaymentStatus}
-                    className="mt-2 w-full border border-gray-700 text-gray-300 py-2 rounded-lg text-sm hover:border-cyan-400 hover:text-cyan-400 transition"
-                  >
-                    Refresh payment status
-                  </button>
+                  <>
+                    <p className="text-xs text-gray-500 mt-3">
+                      Payment confirmation comes from PayHere
+                      notifications. Refreshing only reloads this
+                      order; it does not verify the payment with
+                      PayHere.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={refreshOrderStatus}
+                      className="mt-2 w-full border border-gray-700 text-gray-300 py-2 rounded-lg text-sm hover:border-cyan-400 hover:text-cyan-400 transition"
+                    >
+                      Refresh order status
+                    </button>
+                  </>
                 )}
             </section>
 

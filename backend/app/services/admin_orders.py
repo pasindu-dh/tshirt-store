@@ -4,8 +4,10 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models import Category, Coupon, Order, Product, ProductVariant
+from app.models import Category, Order, Payment, Product, ProductVariant
 from app.schemas.order import AdminOrderStatsOut, OrderStatusUpdate
+from app.services.payment_events import record_event
+from app.services.stock import release_order_stock
 
 ALLOWED_TRANSITIONS = {
     "pending": {"confirmed", "cancelled"},
@@ -107,48 +109,43 @@ def update_status(
         )
 
     if new_status == "cancelled":
-        variant_ids = [
-            item.variant_id
-            for item in order.items
-            if item.variant_id is not None
-        ]
+        release_order_stock(db, order, reason="cancelled")
 
-        if variant_ids:
-            variants = db.scalars(
-                select(ProductVariant)
-                .where(ProductVariant.id.in_(variant_ids))
-                .order_by(ProductVariant.id)
+        if order.payment_status not in {"paid", "chargedback"}:
+            order.payment_status = "cancelled"
+
+        if order.payment_method == "online":
+            pending_payments = db.scalars(
+                select(Payment)
+                .where(
+                    Payment.order_id == order.id,
+                    Payment.status.in_(("pending", "failed")),
+                )
                 .with_for_update()
             ).all()
-            variants_by_id = {
-                variant.id: variant for variant in variants
-            }
 
-            for item in order.items:
-                variant = (
-                    variants_by_id.get(item.variant_id)
-                    if item.variant_id is not None
-                    else None
+            for payment in pending_payments:
+                payment.status = "cancelled"
+                record_event(
+                    db,
+                    payment,
+                    status="cancelled",
+                    status_code="cancelled",
+                    source="system",
+                    note="Order cancelled by admin.",
                 )
-                if variant is not None:
-                    variant.stock += item.quantity
-
-        order.payment_status = (
-            "cancelled"
-            if order.payment_status != "paid"
-            else "paid"
-        )
-
-        if order.discount_code:
-            coupon = db.scalar(
-                select(Coupon)
-                .where(Coupon.code == order.discount_code)
-                .with_for_update()
+    elif new_status == "delivered":
+        if (
+            order.payment_method == "online"
+            and order.payment_status != "paid"
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Online payment must be paid before delivery."
+                ),
             )
 
-            if coupon is not None and coupon.used_count > 0:
-                coupon.used_count -= 1
-    elif new_status == "delivered":
         if order.payment_method == "cod":
             order.payment_status = "paid"
 
@@ -187,7 +184,8 @@ def get_stats(db: Session) -> AdminOrderStatsOut:
     revenue = int(
         db.scalar(
             select(func.coalesce(func.sum(Order.total), 0)).where(
-                Order.status == "delivered"
+                Order.status == "delivered",
+                Order.payment_status == "paid",
             )
         )
         or 0

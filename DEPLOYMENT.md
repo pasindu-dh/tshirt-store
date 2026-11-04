@@ -63,10 +63,14 @@ Run `python -m alembic upgrade head` before starting a new release/container.
 | Variable | Notes |
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL URL with `postgresql+psycopg://` |
+| `APP_ENV` | Set to `production` in production; `mock` payment mode is rejected at startup there |
 | `JWT_SECRET` | Long random value, for example `python -c "import secrets; print(secrets.token_urlsafe(64))"` |
 | `FRONTEND_ORIGINS` | Comma-separated production frontend origins, no trailing slash |
 | `UPLOADS_DIR` | Directory on a persistent disk, for example `/var/data/uploads` |
 | `SHIPPING_FEE_LKR` | Optional checkout shipping fee |
+| `ONLINE_PAYMENT_RESERVATION_MINUTES` | Unpaid online order stock reservation window; `0` disables expiry |
+| `STOCK_RESERVATION_SWEEP_ENABLED` | In-process reservation sweeper; set `false` if using the cron command |
+| `STOCK_RESERVATION_SWEEP_SECONDS` | Sweeper interval, minimum 10 seconds |
 | `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Only needed for the one-time admin seed command |
 | `SMTP_HOST` | Optional SMTP server for order emails; leave blank to disable |
 | `SMTP_PORT` | SMTP port, commonly `587` |
@@ -154,7 +158,8 @@ your development data:
 ```bash
 cd backend
 # Set DATABASE_URL to a throwaway SQLite file, ADMIN_* to test values,
-# PAYMENT_PROVIDER=mock, and PAYMENT_MOCK_ENABLED=true, then:
+# APP_ENV=test, PAYMENT_PROVIDER=mock, PAYMENT_MOCK_ENABLED=true, and
+# STOCK_RESERVATION_SWEEP_ENABLED=false, then:
 python -m alembic upgrade head
 python -m app.seed
 python -m app.seed_admin
@@ -209,7 +214,11 @@ PAYHERE_SANDBOX=true
 FRONTEND_BASE_URL=https://your-frontend-host
 BACKEND_PUBLIC_URL=https://your-api-host
 PAYMENT_MOCK_ENABLED=false
+APP_ENV=production
 ```
+
+`APP_ENV=production` is a hard guard: startup fails if mock payment mode is
+enabled or `PAYMENT_PROVIDER=mock`. Keep `PAYMENT_MOCK_ENABLED=false`.
 
 3. The backend builds the `notify_url` as
    `BACKEND_PUBLIC_URL/payments/payhere/notify`. It must be publicly reachable
@@ -224,9 +233,48 @@ PAYMENT_MOCK_ENABLED=false
    credentials.
 
 The webhook verifies the PayHere `md5sig`, merchant ID, amount, and currency
-before changing any payment. Success/failure notifications are idempotent;
-a paid payment is never downgraded by a later failure notification. Failed
-online payments can be retried from the order detail page.
+before changing any payment. Success, failure, cancellation, and chargeback
+notifications are idempotent; duplicate notifications do not duplicate state
+or events. A paid payment can transition to `chargedback`; other later failure
+notifications do not downgrade it. Payment attempts and audit events are kept
+for admin history.
+
+Failed online payments can be retried from the order detail page until the
+reservation expires. Online orders cannot be marked delivered until their
+payment status is `paid`.
+
+### Stock reservation expiry
+
+Unpaid online orders reserve stock. `ONLINE_PAYMENT_RESERVATION_MINUTES`
+controls the window (default 30; `0` disables expiry). The in-process sweeper
+runs every `STOCK_RESERVATION_SWEEP_SECONDS` while the API is running. If your
+host runs many workers or you prefer an external scheduler, disable the
+in-process sweeper and run this command periodically:
+
+```bash
+cd backend
+python -m app.expire_reservations
+```
+
+Expiry cancels the order, releases reserved stock and coupon usage exactly
+once, and marks pending/failed payment attempts cancelled with an audit event.
+Order/payment row locking prevents duplicate releases and limits overselling
+on PostgreSQL.
+
+### Manual payment reconciliation
+
+Automatic PayHere lookup is not configured. If a notification is missed,
+verify the transaction in the PayHere dashboard and use the admin Order detail
+→ Payment history form, or:
+
+```text
+POST /admin/orders/{order_id}/payments/{payment_id}/reconcile
+```
+
+The admin endpoint requires a note and a PayHere transaction ID for a paid or
+chargedback result. It records the admin and note in the payment event history.
+Refreshing a customer order only reloads local state; it does not query
+PayHere.
 
 ### Refunds and cancellation
 
@@ -252,8 +300,9 @@ online payment.
 - [ ] Uploads directory private to the app and backed up.
 - [ ] SMTP password stored as a secret; sender domain configured and tested.
 - [ ] PayHere merchant secret stored as a secret; sandbox disabled for live.
+- [ ] `APP_ENV=production`, `PAYMENT_PROVIDER=payhere`, and `PAYMENT_MOCK_ENABLED=false`.
 - [ ] `BACKEND_PUBLIC_URL/payments/payhere/notify` reachable over HTTPS.
-- [ ] `PAYMENT_MOCK_ENABLED=false` and `PAYMENT_PROVIDER=payhere` in production.
+- [ ] Stock reservation expiry configured and, if the in-process sweeper is disabled, a cron job runs `python -m app.expire_reservations`.
 - [ ] Login rate limiting sized for your traffic or moved to Redis.
 - [ ] Admin account verified with `python -m app.seed_admin` validation rules.
 - [ ] Dependencies updated and `npm audit` / `pip-audit` reviewed.

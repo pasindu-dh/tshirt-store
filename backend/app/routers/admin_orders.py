@@ -14,9 +14,18 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import require_admin
+from app.models import User
 from app.schemas.order import OrderOut, OrderStatusUpdate
+from app.schemas.payment import (
+    AdminPaymentOut,
+    ManualReconciliationRequest,
+)
 from app.services import admin_orders
-from app.services.email import send_order_status_update
+from app.services import payments as payment_service
+from app.services.email import (
+    send_order_status_update,
+    send_payment_confirmation,
+)
 
 OrderStatusFilter = Literal[
     "pending",
@@ -70,6 +79,69 @@ def get_order(order_id: int, db: Session = Depends(get_db)):
         )
 
     return order
+
+
+@router.get(
+    "/{order_id}/payments",
+    response_model=list[AdminPaymentOut],
+)
+def get_order_payments(
+    order_id: int,
+    db: Session = Depends(get_db),
+):
+    order = admin_orders.get_order(db, order_id)
+
+    if order is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Order not found",
+        )
+
+    return payment_service.list_order_payments(db, order.id)
+
+
+@router.post(
+    "/{order_id}/payments/{payment_id}/reconcile",
+    response_model=AdminPaymentOut,
+)
+def reconcile_order_payment(
+    order_id: int,
+    payment_id: int,
+    payload: ManualReconciliationRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    order = admin_orders.get_order(db, order_id)
+
+    if order is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Order not found",
+        )
+
+    try:
+        result = payment_service.reconcile_payment(
+            db, current_user, order, payment_id, payload
+        )
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise
+
+    if result.newly_paid:
+        background_tasks.add_task(
+            send_payment_confirmation,
+            result.order.contact_email,
+            result.order.id,
+            result.order.contact_name,
+            result.order.total,
+            result.payment.reference,
+        )
+
+    return result.payment
 
 
 @router.patch("/{order_id}/status", response_model=OrderOut)

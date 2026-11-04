@@ -23,6 +23,9 @@ os.environ["PAYMENT_MOCK_ENABLED"] = "true"
 os.environ["PAYMENT_CURRENCY"] = "LKR"
 os.environ["FRONTEND_BASE_URL"] = "http://127.0.0.1:5173"
 os.environ["BACKEND_PUBLIC_URL"] = "http://127.0.0.1:8005"
+os.environ["APP_ENV"] = "test"
+os.environ["ONLINE_PAYMENT_RESERVATION_MINUTES"] = "30"
+os.environ["STOCK_RESERVATION_SWEEP_ENABLED"] = "false"
 
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402

@@ -3,6 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { imageUrl } from "../../api/client";
 import {
   getAdminOrder,
+  getAdminOrderPayments,
+  reconcileAdminPayment,
   updateAdminOrderStatus,
 } from "../../api/adminOrders";
 import OrderStatusBadge from "../../components/OrderStatusBadge";
@@ -70,6 +72,16 @@ function AdminOrderDetail({ orderId }) {
   const [updating, setUpdating] = useState(null);
   const [actionError, setActionError] = useState("");
   const [flash, setFlash] = useState("");
+  const [payments, setPayments] = useState([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(true);
+  const [paymentsError, setPaymentsError] = useState("");
+  const [reconcilePaymentId, setReconcilePaymentId] = useState("");
+  const [reconcileStatus, setReconcileStatus] = useState("paid");
+  const [transactionId, setTransactionId] = useState("");
+  const [reconcileNote, setReconcileNote] = useState("");
+  const [reconciling, setReconciling] = useState(false);
+  const [reconcileError, setReconcileError] = useState("");
+  const [reconcileMessage, setReconcileMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -97,6 +109,95 @@ function AdminOrderDetail({ orderId }) {
       cancelled = true;
     };
   }, [orderId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getAdminOrderPayments(orderId)
+      .then((data) => {
+        if (cancelled) return;
+
+        setPayments(data);
+        const candidate =
+          data.find((payment) =>
+            ["pending", "failed"].includes(payment.status)
+          ) ?? data[0];
+        setReconcilePaymentId(
+          candidate ? String(candidate.id) : ""
+        );
+      })
+      .catch((requestError) => {
+        if (!cancelled) {
+          setPaymentsError(
+            getApiError(
+              requestError,
+              "Could not load payment history."
+            )
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPaymentsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId]);
+
+  const refreshPayments = async () => {
+    const data = await getAdminOrderPayments(orderId);
+    setPayments(data);
+    setPaymentsError("");
+    return data;
+  };
+
+  const handleReconcile = async (event) => {
+    event.preventDefault();
+    setReconcileError("");
+    setReconcileMessage("");
+
+    if (!reconcilePaymentId) {
+      setReconcileError("Select a payment attempt.");
+      return;
+    }
+
+    if (!reconcileNote.trim()) {
+      setReconcileError(
+        "Add a note explaining how the transaction was verified."
+      );
+      return;
+    }
+
+    setReconciling(true);
+
+    try {
+      await reconcileAdminPayment(
+        orderId,
+        reconcilePaymentId,
+        {
+          status: reconcileStatus,
+          provider_payment_id: transactionId.trim(),
+          note: reconcileNote.trim(),
+        }
+      );
+      const refreshed = await getAdminOrder(orderId);
+      setOrder(refreshed);
+      await refreshPayments();
+      setTransactionId("");
+      setReconcileNote("");
+      setReconcileMessage("Payment reconciliation recorded.");
+    } catch (requestError) {
+      setReconcileError(
+        getApiError(
+          requestError,
+          "Could not record payment reconciliation."
+        )
+      );
+    } finally {
+      setReconciling(false);
+    }
+  };
 
   const handleAction = async (action) => {
     if (
@@ -164,7 +265,19 @@ function AdminOrderDetail({ orderId }) {
 
   if (!order) return null;
 
-  const actions = STATUS_ACTIONS[order.status] ?? [];
+  const onlinePaymentUnpaid =
+    order.payment_method === "online" &&
+    order.payment_status !== "paid";
+  const actions = (STATUS_ACTIONS[order.status] ?? []).filter(
+    (action) =>
+      !(action.status === "delivered" && onlinePaymentUnpaid)
+  );
+  const paymentTone =
+    order.payment_status === "paid"
+      ? "text-green-400"
+      : ["failed", "chargedback"].includes(order.payment_status)
+        ? "text-red-400"
+        : "text-yellow-400";
 
   return (
     <div>
@@ -292,6 +405,13 @@ function AdminOrderDetail({ orderId }) {
               </p>
             )}
 
+            {onlinePaymentUnpaid && (
+              <p className="text-sm text-yellow-400 mt-3">
+                Online payment must be paid before this order can be
+                marked delivered.
+              </p>
+            )}
+
             {flash && (
               <p className="text-sm text-green-400 mt-3">{flash}</p>
             )}
@@ -335,9 +455,209 @@ function AdminOrderDetail({ orderId }) {
                   ? "Online payment"
                   : order.payment_method}
             </p>
-            <p className="text-sm text-gray-400 mt-1 capitalize">
+            <p
+              className={`text-sm mt-1 capitalize ${paymentTone}`}
+            >
               Status: {order.payment_status}
             </p>
+
+            {order.payment_method === "online" &&
+              order.reservation_expires_at && (
+                <p className="text-xs text-gray-500 mt-2">
+                  Stock reservation expires:{" "}
+                  {formatDate(order.reservation_expires_at)}
+                </p>
+              )}
+
+            {order.stock_released_at && (
+              <p className="text-xs text-gray-500 mt-2">
+                Stock released {formatDate(order.stock_released_at)}
+                {order.stock_release_reason
+                  ? ` (${order.stock_release_reason})`
+                  : ""}
+              </p>
+            )}
+          </section>
+
+          <section className="bg-[#020617] border border-gray-800 rounded-2xl p-6">
+            <h3 className="text-lg font-semibold mb-3">
+              Payment history
+            </h3>
+
+            {paymentsLoading ? (
+              <p className="text-sm text-gray-400">
+                Loading payment history...
+              </p>
+            ) : paymentsError ? (
+              <p className="text-sm text-red-400">{paymentsError}</p>
+            ) : payments.length === 0 ? (
+              <p className="text-sm text-gray-400">
+                No online payment attempts for this order.
+              </p>
+            ) : (
+              <>
+                <div className="space-y-4">
+                  {payments.map((payment) => (
+                    <div
+                      key={payment.id}
+                      className="border border-gray-800 rounded-xl p-3"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-medium break-all">
+                            {payment.reference}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {payment.provider} · LKR {payment.amount}
+                          </p>
+                        </div>
+                        <span
+                          className={`text-xs capitalize ${
+                            payment.status === "paid"
+                              ? "text-green-400"
+                              : [
+                                    "failed",
+                                    "chargedback",
+                                  ].includes(payment.status)
+                                ? "text-red-400"
+                                : "text-yellow-400"
+                          }`}
+                        >
+                          {payment.status}
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-gray-500 mt-2 break-all">
+                        Transaction:{" "}
+                        {payment.provider_payment_id || "—"}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Created: {formatDate(payment.created_at)}
+                        {payment.paid_at
+                          ? ` · Paid: ${formatDate(payment.paid_at)}`
+                          : ""}
+                      </p>
+
+                      <ul className="mt-3 space-y-1 border-t border-gray-800 pt-2">
+                        {payment.events.map((event) => (
+                          <li
+                            key={event.id}
+                            className="text-xs text-gray-400"
+                          >
+                            <span className="capitalize text-gray-300">
+                              {event.status}
+                            </span>{" "}
+                            · {event.source} ·{" "}
+                            {formatDate(event.created_at)}
+                            {event.note ? ` · ${event.note}` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+
+                <form
+                  onSubmit={handleReconcile}
+                  className="mt-5 pt-4 border-t border-gray-800 space-y-3"
+                >
+                  <div>
+                    <h4 className="text-sm font-semibold">
+                      Manual reconciliation
+                    </h4>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Automatic PayHere lookup is not configured.
+                      Verify the transaction in the PayHere dashboard
+                      before recording the result here.
+                    </p>
+                  </div>
+
+                  <label className="block text-xs text-gray-300">
+                    Payment attempt
+                    <select
+                      value={reconcilePaymentId}
+                      onChange={(event) =>
+                        setReconcilePaymentId(event.target.value)
+                      }
+                      className="mt-1 w-full p-2 rounded-lg bg-black border border-gray-700 outline-none focus:border-cyan-400 text-sm"
+                    >
+                      {payments.map((payment) => (
+                        <option
+                          key={payment.id}
+                          value={payment.id}
+                        >
+                          {payment.reference} ({payment.status})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block text-xs text-gray-300">
+                    Reconciled status
+                    <select
+                      value={reconcileStatus}
+                      onChange={(event) =>
+                        setReconcileStatus(event.target.value)
+                      }
+                      className="mt-1 w-full p-2 rounded-lg bg-black border border-gray-700 outline-none focus:border-cyan-400 text-sm"
+                    >
+                      <option value="paid">Paid</option>
+                      <option value="failed">Failed</option>
+                      <option value="cancelled">Cancelled</option>
+                      <option value="chargedback">Chargedback</option>
+                    </select>
+                  </label>
+
+                  <label className="block text-xs text-gray-300">
+                    PayHere transaction ID
+                    <input
+                      value={transactionId}
+                      onChange={(event) =>
+                        setTransactionId(event.target.value)
+                      }
+                      maxLength={100}
+                      placeholder="Required for paid/chargedback"
+                      className="mt-1 w-full p-2 rounded-lg bg-black border border-gray-700 outline-none focus:border-cyan-400 text-sm"
+                    />
+                  </label>
+
+                  <label className="block text-xs text-gray-300">
+                    Reconciliation note
+                    <textarea
+                      value={reconcileNote}
+                      onChange={(event) =>
+                        setReconcileNote(event.target.value)
+                      }
+                      rows={3}
+                      maxLength={500}
+                      placeholder="How did you verify this transaction?"
+                      className="mt-1 w-full p-2 rounded-lg bg-black border border-gray-700 outline-none focus:border-cyan-400 text-sm"
+                    />
+                  </label>
+
+                  {reconcileError && (
+                    <p className="text-sm text-red-400">
+                      {reconcileError}
+                    </p>
+                  )}
+                  {reconcileMessage && (
+                    <p className="text-sm text-green-400">
+                      {reconcileMessage}
+                    </p>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={reconciling}
+                    className="w-full bg-cyan-400 text-black py-2 rounded-lg font-semibold hover:bg-cyan-300 transition disabled:opacity-50"
+                  >
+                    {reconciling
+                      ? "Recording..."
+                      : "Record reconciliation"}
+                  </button>
+                </form>
+              </>
+            )}
           </section>
         </div>
       </div>

@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -11,6 +13,7 @@ from app.models import (
     ProductVariant,
     User,
 )
+from app.models.common import utcnow
 from app.schemas.order import OrderCreate
 from app.services import coupons as coupon_service
 
@@ -117,6 +120,15 @@ def create_order(
 
     shipping_fee = settings.shipping_fee_lkr
     total = subtotal - discount_amount + shipping_fee
+    reservation_expires_at = None
+
+    if (
+        payload.payment_method == "online"
+        and settings.online_payment_reservation_minutes > 0
+    ):
+        reservation_expires_at = utcnow() + timedelta(
+            minutes=settings.online_payment_reservation_minutes
+        )
 
     order = Order(
         user_id=user.id,
@@ -137,6 +149,7 @@ def create_order(
         postal_code=payload.postal_code,
         country=payload.country,
         notes=payload.notes,
+        reservation_expires_at=reservation_expires_at,
     )
 
     for item in cart_items:

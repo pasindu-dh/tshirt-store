@@ -48,6 +48,15 @@ class Order(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
+    reservation_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    stock_released_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    stock_release_reason: Mapped[str] = mapped_column(
+        String(30), default="", server_default=""
+    )
 
     items: Mapped[list["OrderItem"]] = relationship(
         back_populates="order",

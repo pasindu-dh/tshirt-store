@@ -166,15 +166,17 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 ### Orders (authenticated)
 > Requires a bearer token. Prices, shipping, and totals are computed server-side from the database, and stock is revalidated at checkout.
 
-- `POST /orders`: Place an order from the server cart using the supplied contact/shipping details and `payment_method` (`cod` or `online`). An optional `coupon_code` applies a server-validated discount. Stock is decremented, line items are snapshotted, and the cart is cleared in one transaction. Online orders require a configured payment provider.
+- `POST /orders`: Place an order from the server cart using the supplied contact/shipping details and `payment_method` (`cod` or `online`). An optional `coupon_code` applies a server-validated discount. Stock is decremented, line items are snapshotted, and the cart is cleared in one transaction. Online orders require a configured payment provider and receive a configurable reservation expiry.
 - `GET /orders`: The signed-in customer's orders, newest first.
-- `GET /orders/{id}`: One of the signed-in customer's orders.
+- `GET /orders/{id}`: One of the signed-in customer's orders, including reservation and stock-release state.
 
 ### Payments
 - `GET /payments/config`: Public payment capability flags (`disabled`, `payhere`, or `mock`) without exposing secrets.
-- `POST /payments/orders/{id}/session`: Authenticated owner creates a hosted-checkout session for an online order. PayHere returns the action URL and signed form fields; mock mode returns a local test session.
-- `POST /payments/orders/{id}/mock-complete`: Development/test-only completion endpoint; available only when the mock provider is explicitly enabled.
-- `POST /payments/payhere/notify`: PayHere server notification endpoint. Verifies the merchant signature, amount, and currency, then updates the payment/order idempotently.
+- `POST /payments/orders/{id}/session`: Authenticated owner creates a hosted-checkout session for an online order. PayHere returns the action URL and signed form fields; mock mode returns a local test session. Chargedback orders cannot be paid again.
+- `POST /payments/orders/{id}/mock-complete`: Development/test-only completion endpoint; unavailable in production or under the PayHere provider.
+- `POST /payments/payhere/notify`: PayHere server notification endpoint. Verifies the merchant signature, amount, and currency, then updates the payment/order idempotently. It records payment events and supports paid → chargedback transitions.
+- `GET /admin/orders/{id}/payments`: Admin-only payment attempt history with references, transaction IDs, statuses, and audit events.
+- `POST /admin/orders/{id}/payments/{payment_id}/reconcile`: Admin-only manual reconciliation for cases where automatic provider lookup is unavailable. Requires a verification note and a transaction ID for paid/chargedback results.
 
 ### Reviews
 - `GET /reviews/product/{id}`: Public review list with count and average rating for an active product.
@@ -205,7 +207,9 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 - `DELETE /admin/categories/{id}`: Delete an empty category.
 - `GET /admin/orders`: Paginated order list with optional `status`, `search`, `date_from`, and `date_to` filters; returns `X-Total-Count`.
 - `GET /admin/orders/{id}`: Full order detail for any customer order.
-- `PATCH /admin/orders/{id}/status`: Advance an order through `pending → confirmed → shipped → delivered`, or cancel from `pending`/`confirmed`. Cancelling restores reserved stock and coupon usage; delivering marks COD payment as paid. Status changes send an email when SMTP is configured.
+- `PATCH /admin/orders/{id}/status`: Advance an order through `pending → confirmed → shipped → delivered`, or cancel from `pending`/`confirmed`. Online orders must be paid before they can be delivered. Cancelling restores reserved stock/coupon usage once; delivering marks COD payment as paid. Status changes send an email when SMTP is configured.
+- `GET /admin/orders/{id}/payments`: Payment attempts, references, provider transaction IDs, statuses, and event history.
+- `POST /admin/orders/{id}/payments/{payment_id}/reconcile`: Record a manually verified paid/failed/cancelled/chargedback result. The admin and note are preserved in the payment event history.
 - `GET /admin/stats`: Dashboard aggregates — revenue from delivered orders, open/pending/delivered/cancelled counts, low-stock variants, and product/category totals.
 - `GET/POST /admin/coupons` and `PUT/DELETE /admin/coupons/{id}`: Manage percentage or fixed-amount coupons with minimum subtotals, usage limits, active windows, and active/inactive state.
 
@@ -215,7 +219,8 @@ Sign in at `/login` with an admin account to manage the store:
 
 - **Dashboard**: delivered revenue, open/pending orders, low-stock variants, order/product/category counts, and quick actions.
 - **Orders**: search by order number/customer, filter by status and date range, paginate, and open order details.
-- **Order detail**: review customer/shipping/payment details, items, totals, discounts, and notes; confirm, ship, deliver, or cancel orders. Cancelling restores stock and coupon usage, and delivering marks COD as paid.
+- **Order detail**: review customer/shipping/payment details, items, totals, discounts, notes, payment attempts, PayHere references, transaction IDs, and event history; confirm, ship, deliver, or cancel orders. Online orders cannot be delivered until payment is paid. Admins can record manual reconciliation results when automatic provider lookup is unavailable.
+- **Cancellation and chargebacks**: cancellation restores stock and coupon usage once; paid cancellations keep the payment as paid for manual refund handling. Chargedback payments are shown as a distinct state.
 - **Products**: search/filter/paginate, activate or deactivate, delete, and edit.
 - **Product editor**: upload images (choose a primary image), set price, category and visibility, and manage size/color/SKU/stock variants.
 - **Categories**: create, rename, and delete categories (a category with products cannot be deleted).
@@ -229,7 +234,8 @@ Sign in at `/login` with an admin account to manage the store:
 - The detail page includes an image gallery, color and size selection, live stock status, a stock-aware add-to-cart button, a wishlist toggle, and customer reviews with average ratings and one-review-per-customer editing.
 - Guests keep their cart in localStorage; after login or registration it is merged into the server-side cart. Signed-in customers keep their cart across sessions and devices. Expired access tokens are refreshed automatically.
 - Checkout requires an account, validates prices and stock server-side, supports **Cash on Delivery** and optional **PayHere hosted online payment**, and accepts server-validated coupons. Online orders redirect to PayHere's secure checkout; the signed PayHere notification updates payment status. A flat shipping fee of LKR 350 is applied by default (configurable with `SHIPPING_FEE_LKR`).
-- After ordering, customers see a confirmation and can review their orders at `/orders`. A confirmation email and status-update emails are sent when SMTP is configured.
+- Unpaid online orders have a configurable reservation window (`ONLINE_PAYMENT_RESERVATION_MINUTES`). Expired orders are cancelled, their reserved stock is released exactly once, and pending payment attempts are closed.
+- After ordering, customers see a confirmation and can review their orders at `/orders`. Order emails distinguish pending online payment from confirmed payment; a separate payment confirmation is sent only after server-side payment verification. When SMTP is configured, status-update emails are also sent.
 
 ## 🧪 Testing
 
@@ -243,7 +249,7 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-Coverage includes authentication and role guards, login rate limiting, catalog filters and slug lookup, cart stock caps and guest-cart merging, transactional order creation and stock decrement, coupon previews/discounts/usage rules, admin status transitions and cancellation restock, dashboard stats, reviews, wishlist privacy, upload validation, security headers, CORS, order date filters, mock online payments, and PayHere signature/amount verification.
+Coverage includes authentication and role guards, login rate limiting, catalog filters and slug lookup, cart stock caps and guest-cart merging, transactional order creation and stock decrement, coupon previews/discounts/usage rules, admin status transitions and cancellation restock, dashboard stats, reviews, wishlist privacy, upload validation, security headers, CORS, order date filters, mock online payments, PayHere signature/amount verification, chargebacks, duplicate/delayed notifications, stock reservation expiry, fulfillment guards, manual reconciliation, and payment email timing.
 
 ### Frontend
 

@@ -8,7 +8,8 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
     app_name: str = "FURZY T-Shirt Store API"
-    app_version: str = "0.9.0"
+    app_version: str = "0.9.1"
+    app_env: str = "development"
 
     # Default to an absolute path so the database location never depends on CWD.
     database_url: str = f"sqlite:///{(BACKEND_DIR / 'store.db').as_posix()}"
@@ -47,6 +48,11 @@ class Settings(BaseSettings):
     frontend_base_url: str = "http://127.0.0.1:5173"
     backend_public_url: str = "http://127.0.0.1:8005"
 
+    # Unpaid online orders release their reserved stock after this period.
+    online_payment_reservation_minutes: int = 30
+    stock_reservation_sweep_enabled: bool = True
+    stock_reservation_sweep_seconds: int = 60
+
     # Admin account managed by `python -m app.seed_admin`.
     # There are intentionally no default email/password values. Set
     # ADMIN_EMAIL and ADMIN_PASSWORD in backend/.env; seed_admin refuses
@@ -74,6 +80,10 @@ class Settings(BaseSettings):
         return self.payment_provider.strip().lower()
 
     @property
+    def is_production(self) -> bool:
+        return self.app_env.strip().lower() in {"production", "prod"}
+
+    @property
     def online_payments_enabled(self) -> bool:
         provider = self.normalized_payment_provider
 
@@ -84,9 +94,21 @@ class Settings(BaseSettings):
             )
 
         if provider == "mock":
-            return self.payment_mock_enabled
+            return self.payment_mock_enabled and not self.is_production
 
         return False
+
+
+def validate_payment_security(settings: Settings) -> None:
+    """Fail startup rather than expose mock payment completion in production."""
+
+    if settings.is_production and (
+        settings.payment_mock_enabled
+        or settings.normalized_payment_provider == "mock"
+    ):
+        raise RuntimeError(
+            "Mock online payments cannot be enabled when APP_ENV=production."
+        )
 
 
 @lru_cache
