@@ -76,6 +76,37 @@ export async function updateAdminRefund(
   return data;
 }
 
+export async function getAdminOrderReturns(orderId) {
+  const { data } = await client.get(
+    `/admin/orders/${orderId}/returns`
+  );
+  return data;
+}
+
+export async function reviewAdminOrderReturn(
+  orderId,
+  returnId,
+  payload
+) {
+  const { data } = await client.patch(
+    `/admin/orders/${orderId}/returns/${returnId}`,
+    payload
+  );
+  return data;
+}
+
+export async function linkAdminReturnRefund(
+  orderId,
+  returnId,
+  refundId
+) {
+  const { data } = await client.patch(
+    `/admin/orders/${orderId}/returns/${returnId}/refund`,
+    { refund_id: refundId }
+  );
+  return data;
+}
+
 export async function updateAdminOrderStatus(orderId, status) {
   const { data } = await client.patch(
     `/admin/orders/${orderId}/status`,

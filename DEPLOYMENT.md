@@ -269,7 +269,10 @@ Full refunds set the payment/order payment status to `refunded`; partial
 refunds remain recorded against a paid payment. Dashboard revenue excludes
 fully refunded and chargedback delivered orders, but does not currently
 subtract partial refunds from gross revenue. Customer self-service return
-requests are not included; refunds/returns are recorded by admins.
+requests are available for delivered orders at the order detail page. Admins
+approve or reject them and can link an existing refund record. Returns are
+order-level, do not automatically restock inventory, and do not send
+automatic status emails.
 
 ### Stock reservation expiry
 
@@ -329,6 +332,7 @@ online payment.
 - [ ] SMTP password stored as a secret; sender domain configured and tested.
 - [ ] PayHere merchant secret stored as a secret; sandbox disabled for live.
 - [ ] PayHere Merchant API key restricted to the required permissions/domain/IP.
+- [ ] Return workflow reviewed: order-level requests, manual restocking, and no automatic return emails.
 - [ ] `APP_ENV=production`, `PAYMENT_PROVIDER=payhere`, and `PAYMENT_MOCK_ENABLED=false`.
 - [ ] `BACKEND_PUBLIC_URL/payments/payhere/notify` reachable over HTTPS.
 - [ ] Stock reservation expiry configured and, if the in-process sweeper is disabled, a cron job runs `python -m app.expire_reservations`.

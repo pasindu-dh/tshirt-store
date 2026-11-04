@@ -21,6 +21,7 @@ from app.routers import (
     orders,
     payments,
     products,
+    returns,
     reviews,
     uploads,
     wishlist,
@@ -161,6 +162,7 @@ app.include_router(categories.router)
 app.include_router(auth.router)
 app.include_router(cart.router)
 app.include_router(orders.router)
+app.include_router(returns.router)
 app.include_router(payments.router)
 app.include_router(reviews.router)
 app.include_router(wishlist.router)

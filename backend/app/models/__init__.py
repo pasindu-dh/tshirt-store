@@ -5,6 +5,7 @@ from app.models.order import Order, OrderItem
 from app.models.payment import Payment, PaymentEvent, Refund
 from app.models.product import Product, ProductImage, ProductVariant
 from app.models.review import Review
+from app.models.return_request import ReturnRequest
 from app.models.user import User
 from app.models.wishlist import WishlistItem
 
@@ -17,6 +18,7 @@ __all__ = [
     "Payment",
     "PaymentEvent",
     "Refund",
+    "ReturnRequest",
     "Product",
     "ProductImage",
     "ProductVariant",

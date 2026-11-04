@@ -24,9 +24,15 @@ from app.schemas.payment import (
     RefundOut,
     RefundUpdate,
 )
+from app.schemas.return_request import (
+    ReturnLinkRefundRequest,
+    ReturnRequestOut,
+    ReturnReviewRequest,
+)
 from app.services import admin_orders
 from app.services import payments as payment_service
 from app.services import refunds as refund_service
+from app.services import returns as return_service
 from app.services.email import (
     send_order_status_update,
     send_payment_confirmation,
@@ -287,6 +293,70 @@ def update_order_refund(
         )
 
     return refund_service.update_refund(db, order, refund, payload)
+
+
+@router.get(
+    "/{order_id}/returns",
+    response_model=list[ReturnRequestOut],
+)
+def list_order_returns(
+    order_id: int,
+    db: Session = Depends(get_db),
+):
+    order = admin_orders.get_order(db, order_id)
+
+    if order is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Order not found",
+        )
+
+    return return_service.list_returns(db, order.id)
+
+
+@router.patch(
+    "/{order_id}/returns/{return_id}",
+    response_model=ReturnRequestOut,
+)
+def review_order_return(
+    order_id: int,
+    return_id: int,
+    payload: ReturnReviewRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    order = admin_orders.get_order(db, order_id)
+
+    if order is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Order not found",
+        )
+
+    return return_service.review_return(
+        db, current_user, order, return_id, payload
+    )
+
+
+@router.patch(
+    "/{order_id}/returns/{return_id}/refund",
+    response_model=ReturnRequestOut,
+)
+def link_return_refund(
+    order_id: int,
+    return_id: int,
+    payload: ReturnLinkRefundRequest,
+    db: Session = Depends(get_db),
+):
+    order = admin_orders.get_order(db, order_id)
+
+    if order is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Order not found",
+        )
+
+    return return_service.link_refund(db, order, return_id, payload)
 
 
 @router.patch("/{order_id}/status", response_model=OrderOut)

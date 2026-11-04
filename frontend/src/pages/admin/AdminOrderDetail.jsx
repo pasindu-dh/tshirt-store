@@ -5,8 +5,11 @@ import {
   createAdminRefund,
   getAdminOrder,
   getAdminOrderPayments,
+  getAdminOrderReturns,
+  linkAdminReturnRefund,
   reconcileAdminPayment,
   reconcileAdminPaymentWithProvider,
+  reviewAdminOrderReturn,
   updateAdminOrderStatus,
   updateAdminRefund,
 } from "../../api/adminOrders";
@@ -97,6 +100,13 @@ function AdminOrderDetail({ orderId }) {
   const [providerVerifying, setProviderVerifying] = useState(null);
   const [providerError, setProviderError] = useState("");
   const [providerMessage, setProviderMessage] = useState("");
+  const [returns, setReturns] = useState([]);
+  const [returnsLoading, setReturnsLoading] = useState(true);
+  const [returnsError, setReturnsError] = useState("");
+  const [returnReviewNote, setReturnReviewNote] = useState("");
+  const [returnActionId, setReturnActionId] = useState(null);
+  const [linkRefundId, setLinkRefundId] = useState("");
+  const [returnMessage, setReturnMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -163,11 +173,105 @@ function AdminOrderDetail({ orderId }) {
     };
   }, [orderId]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    getAdminOrderReturns(orderId)
+      .then((data) => {
+        if (!cancelled) setReturns(data);
+      })
+      .catch((requestError) => {
+        if (!cancelled) {
+          setReturnsError(
+            getApiError(
+              requestError,
+              "Could not load return requests."
+            )
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setReturnsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId]);
+
   const refreshPayments = async () => {
     const data = await getAdminOrderPayments(orderId);
     setPayments(data);
     setPaymentsError("");
     return data;
+  };
+
+  const refreshReturns = async () => {
+    const data = await getAdminOrderReturns(orderId);
+    setReturns(data);
+    setReturnsError("");
+    return data;
+  };
+
+  const handleReviewReturn = async (returnId, status) => {
+    setReturnActionId(returnId);
+    setReturnsError("");
+    setReturnMessage("");
+
+    try {
+      await reviewAdminOrderReturn(orderId, returnId, {
+        status,
+        note: returnReviewNote.trim(),
+      });
+      await refreshReturns();
+      setReturnReviewNote("");
+      setReturnMessage(`Return request ${status}.`);
+    } catch (requestError) {
+      setReturnsError(
+        getApiError(
+          requestError,
+          "Could not review the return request."
+        )
+      );
+    } finally {
+      setReturnActionId(null);
+    }
+  };
+
+  const handleLinkReturnRefund = async (returnId) => {
+    const refunds = payments.flatMap(
+      (payment) => payment.refunds ?? []
+    );
+    const selected =
+      linkRefundId || (refunds[0] ? String(refunds[0].id) : "");
+
+    if (!selected) {
+      setReturnsError(
+        "Create a refund record in Payment history first."
+      );
+      return;
+    }
+
+    setReturnsError("");
+    setReturnMessage("");
+
+    try {
+      await linkAdminReturnRefund(
+        orderId,
+        returnId,
+        Number(selected)
+      );
+      await refreshReturns();
+      setLinkRefundId("");
+      setReturnMessage("Refund linked to return request.");
+    } catch (requestError) {
+      setReturnsError(
+        getApiError(
+          requestError,
+          "Could not link the refund."
+        )
+      );
+    }
   };
 
   const handleProviderReconcile = async (payment) => {
@@ -183,6 +287,7 @@ function AdminOrderDetail({ orderId }) {
       const refreshedOrder = await getAdminOrder(orderId);
       setOrder(refreshedOrder);
       await refreshPayments();
+      await refreshReturns().catch(() => {});
       setProviderMessage("PayHere verification recorded.");
     } catch (requestError) {
       setProviderError(
@@ -229,6 +334,7 @@ function AdminOrderDetail({ orderId }) {
       const refreshedOrder = await getAdminOrder(orderId);
       setOrder(refreshedOrder);
       await refreshPayments();
+      await refreshReturns().catch(() => {});
       setRefundAmount("");
       setRefundReason("");
       setRefundNotes("");
@@ -266,6 +372,7 @@ function AdminOrderDetail({ orderId }) {
       const refreshedOrder = await getAdminOrder(orderId);
       setOrder(refreshedOrder);
       await refreshPayments();
+      await refreshReturns().catch(() => {});
       setRefundMessage("Refund marked completed.");
     } catch (requestError) {
       setRefundError(
@@ -400,6 +507,9 @@ function AdminOrderDetail({ orderId }) {
       : ["failed", "chargedback"].includes(order.payment_status)
         ? "text-red-400"
         : "text-yellow-400";
+  const availableRefunds = payments.flatMap(
+    (payment) => payment.refunds ?? []
+  );
 
   return (
     <div>
@@ -970,6 +1080,183 @@ function AdminOrderDetail({ orderId }) {
                   </button>
                 </form>
               </>
+            )}
+          </section>
+
+          <section className="bg-[#020617] border border-gray-800 rounded-2xl p-6">
+            <h3 className="text-lg font-semibold mb-3">Returns</h3>
+
+            {returnsLoading ? (
+              <p className="text-sm text-gray-400">
+                Loading return requests...
+              </p>
+            ) : returnsError && returns.length === 0 ? (
+              <p className="text-sm text-red-400">{returnsError}</p>
+            ) : returns.length === 0 ? (
+              <p className="text-sm text-gray-400">
+                No return requests for this order.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {returns.map((request) => (
+                  <div
+                    key={request.id}
+                    className="border border-gray-800 rounded-xl p-3 space-y-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium">
+                        Return #{request.id}
+                      </p>
+                      <span
+                        className={`text-xs capitalize ${
+                          request.status === "approved"
+                            ? "text-green-400"
+                            : request.status === "rejected"
+                              ? "text-red-400"
+                              : "text-yellow-400"
+                        }`}
+                      >
+                        {request.status}
+                      </span>
+                    </div>
+
+                    <p className="text-sm text-gray-300">
+                      {request.reason}
+                    </p>
+                    {request.notes && (
+                      <p className="text-xs text-gray-500">
+                        {request.notes}
+                      </p>
+                    )}
+                    {request.review_note && (
+                      <p className="text-xs text-gray-400">
+                        Review note: {request.review_note}
+                      </p>
+                    )}
+
+                    {request.status === "requested" && (
+                      <div className="space-y-2 pt-2 border-t border-gray-800">
+                        <label className="block text-xs text-gray-300">
+                          Review note (optional)
+                          <input
+                            value={returnReviewNote}
+                            onChange={(event) =>
+                              setReturnReviewNote(
+                                event.target.value
+                              )
+                            }
+                            maxLength={500}
+                            className="mt-1 w-full p-2 rounded-lg bg-black border border-gray-700 outline-none focus:border-cyan-400 text-sm"
+                          />
+                        </label>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={returnActionId === request.id}
+                            onClick={() =>
+                              handleReviewReturn(
+                                request.id,
+                                "approved"
+                              )
+                            }
+                            className="flex-1 bg-cyan-400 text-black py-2 rounded-lg text-sm font-semibold hover:bg-cyan-300 disabled:opacity-50"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            disabled={returnActionId === request.id}
+                            onClick={() =>
+                              handleReviewReturn(
+                                request.id,
+                                "rejected"
+                              )
+                            }
+                            className="flex-1 border border-red-500/60 text-red-400 py-2 rounded-lg text-sm font-semibold hover:bg-red-500/10 disabled:opacity-50"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {request.status === "approved" &&
+                      !request.refund_id && (
+                        <div className="space-y-2 pt-2 border-t border-gray-800">
+                          {availableRefunds.length > 0 ? (
+                            <>
+                              <label className="block text-xs text-gray-300">
+                                Link a refund
+                                <select
+                                  value={
+                                    linkRefundId ||
+                                    String(
+                                      availableRefunds[0]?.id ?? ""
+                                    )
+                                  }
+                                  onChange={(event) =>
+                                    setLinkRefundId(
+                                      event.target.value
+                                    )
+                                  }
+                                  className="mt-1 w-full p-2 rounded-lg bg-black border border-gray-700 outline-none focus:border-cyan-400 text-sm"
+                                >
+                                  {availableRefunds.map(
+                                    (refund) => (
+                                      <option
+                                        key={refund.id}
+                                        value={refund.id}
+                                      >
+                                        Refund #{refund.id} · LKR{" "}
+                                        {refund.amount} ·{" "}
+                                        {refund.status}
+                                      </option>
+                                    )
+                                  )}
+                                </select>
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleLinkReturnRefund(
+                                    request.id
+                                  )
+                                }
+                                className="w-full border border-cyan-500/50 text-cyan-400 py-2 rounded-lg text-xs font-semibold hover:bg-cyan-500/10"
+                              >
+                                Link refund
+                              </button>
+                            </>
+                          ) : (
+                            <p className="text-xs text-yellow-400">
+                              Create a refund in Payment history
+                              before linking it.
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                    {request.refund && (
+                      <p className="text-xs text-cyan-400">
+                        Linked refund #{request.refund.id} · LKR{" "}
+                        {request.refund.amount} ·{" "}
+                        {request.refund.status}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {returnsError && returns.length > 0 && (
+              <p className="text-sm text-red-400 mt-3">
+                {returnsError}
+              </p>
+            )}
+            {returnMessage && (
+              <p className="text-sm text-green-400 mt-3">
+                {returnMessage}
+              </p>
             )}
           </section>
         </div>

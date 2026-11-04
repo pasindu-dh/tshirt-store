@@ -3,6 +3,10 @@ import { Link, useLocation, useParams } from "react-router-dom";
 import { imageUrl } from "../api/client";
 import { getOrder } from "../api/orders";
 import {
+  createOrderReturn,
+  getOrderReturns,
+} from "../api/returns";
+import {
   completeMockPayment,
   createPaymentSession,
   submitPayHereCheckout,
@@ -33,6 +37,13 @@ function OrderDetail({ orderId }) {
   const paymentReturn = new URLSearchParams(location.search).get(
     "payment"
   );
+  const [returns, setReturns] = useState([]);
+  const [returnsLoading, setReturnsLoading] = useState(true);
+  const [returnsError, setReturnsError] = useState("");
+  const [returnReason, setReturnReason] = useState("");
+  const [returnNotes, setReturnNotes] = useState("");
+  const [returnSubmitting, setReturnSubmitting] = useState(false);
+  const [returnMessage, setReturnMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -60,6 +71,66 @@ function OrderDetail({ orderId }) {
       cancelled = true;
     };
   }, [orderId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getOrderReturns(orderId)
+      .then((data) => {
+        if (!cancelled) setReturns(data);
+      })
+      .catch((requestError) => {
+        if (!cancelled) {
+          setReturnsError(
+            getApiError(
+              requestError,
+              "Could not load return requests."
+            )
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setReturnsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId]);
+
+  const handleReturnSubmit = async (event) => {
+    event.preventDefault();
+    setReturnMessage("");
+    setReturnsError("");
+
+    if (returnReason.trim().length < 3) {
+      setReturnsError("Describe the reason for the return.");
+      return;
+    }
+
+    setReturnSubmitting(true);
+
+    try {
+      await createOrderReturn(orderId, {
+        reason: returnReason.trim(),
+        notes: returnNotes.trim(),
+      });
+      const updated = await getOrderReturns(orderId);
+      setReturns(updated);
+      setReturnReason("");
+      setReturnNotes("");
+      setReturnMessage("Return request submitted.");
+    } catch (requestError) {
+      setReturnsError(
+        getApiError(
+          requestError,
+          "Could not submit the return request."
+        )
+      );
+    } finally {
+      setReturnSubmitting(false);
+    }
+  };
 
   const refreshOrderStatus = async () => {
     try {
@@ -161,6 +232,11 @@ function OrderDetail({ orderId }) {
       : ["failed", "chargedback"].includes(order.payment_status)
         ? "text-red-400"
         : "text-yellow-400";
+  const activeReturn = returns.find((request) =>
+    ["requested", "approved"].includes(request.status)
+  );
+  const canRequestReturn =
+    order.status === "delivered" && !activeReturn;
 
   return (
     <div className="min-h-screen px-6 md:px-10 pb-20 pt-10">
@@ -394,6 +470,149 @@ function OrderDetail({ orderId }) {
             </div>
           </div>
         </div>
+
+        <section
+          aria-labelledby="returns-heading"
+          className="mt-10 bg-[#020617] border border-gray-800 rounded-2xl p-6"
+        >
+          <h2 id="returns-heading" className="text-lg font-semibold">
+            Returns
+          </h2>
+          <p className="text-sm text-gray-400 mt-1">
+            Request a return after your order has been delivered.
+          </p>
+
+          {returnsLoading ? (
+            <p className="text-sm text-gray-400 mt-4">
+              Loading return requests...
+            </p>
+          ) : (
+            <>
+              {returns.length > 0 && (
+                <div className="space-y-3 mt-4">
+                  {returns.map((request) => (
+                    <div
+                      key={request.id}
+                      className="border border-gray-800 rounded-xl p-4"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium">
+                          Return request #{request.id}
+                        </p>
+                        <span
+                          className={`text-xs capitalize ${
+                            request.status === "approved"
+                              ? "text-green-400"
+                              : request.status === "rejected"
+                                ? "text-red-400"
+                                : "text-yellow-400"
+                          }`}
+                        >
+                          {request.status}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-300 mt-2">
+                        {request.reason}
+                      </p>
+                      {request.notes && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          {request.notes}
+                        </p>
+                      )}
+                      {request.review_note && (
+                        <p className="text-xs text-gray-400 mt-2">
+                          Admin note: {request.review_note}
+                        </p>
+                      )}
+                      {request.refund && (
+                        <p className="text-xs text-cyan-400 mt-2">
+                          Refund: LKR {request.refund.amount} ·{" "}
+                          {request.refund.status}
+                        </p>
+                      )}
+                      <p className="text-xs text-gray-600 mt-2">
+                        Requested {formatDate(request.created_at)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {returnMessage && (
+                <p className="text-sm text-green-400 mt-3">
+                  {returnMessage}
+                </p>
+              )}
+
+              {canRequestReturn ? (
+                <form
+                  onSubmit={handleReturnSubmit}
+                  className="mt-5 space-y-3 border-t border-gray-800 pt-4"
+                >
+                  <label className="block text-sm text-gray-300">
+                    Reason for return
+                    <textarea
+                      value={returnReason}
+                      onChange={(event) =>
+                        setReturnReason(event.target.value)
+                      }
+                      rows={3}
+                      maxLength={500}
+                      required
+                      className="mt-1 w-full p-3 rounded-lg bg-black border border-gray-700 outline-none focus:border-cyan-400"
+                    />
+                  </label>
+                  <label className="block text-sm text-gray-300">
+                    Additional notes (optional)
+                    <textarea
+                      value={returnNotes}
+                      onChange={(event) =>
+                        setReturnNotes(event.target.value)
+                      }
+                      rows={2}
+                      maxLength={1000}
+                      className="mt-1 w-full p-3 rounded-lg bg-black border border-gray-700 outline-none focus:border-cyan-400"
+                    />
+                  </label>
+                  {returnsError && (
+                    <p className="text-sm text-red-400">
+                      {returnsError}
+                    </p>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={returnSubmitting}
+                    className="bg-cyan-400 text-black px-5 py-2 rounded-lg font-semibold hover:bg-cyan-300 transition disabled:opacity-50"
+                  >
+                    {returnSubmitting
+                      ? "Submitting..."
+                      : "Request return"}
+                  </button>
+                </form>
+              ) : activeReturn ? (
+                <p className="text-sm text-gray-400 mt-4">
+                  You have an active return request. We will update
+                  this page after review.
+                </p>
+              ) : (
+                order.status !== "delivered" && (
+                  <p className="text-sm text-gray-400 mt-4">
+                    Returns can be requested once this order is
+                    delivered.
+                  </p>
+                )
+              )}
+
+              {!canRequestReturn &&
+                returnsError &&
+                returns.length === 0 && (
+                  <p className="text-sm text-red-400 mt-3">
+                    {returnsError}
+                  </p>
+                )}
+            </>
+          )}
+        </section>
       </div>
     </div>
   );
