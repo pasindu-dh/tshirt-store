@@ -17,6 +17,7 @@ from app.schemas.return_request import (
     ReturnRequestCreate,
     ReturnReviewRequest,
 )
+from app.services.inventory import record_stock_movement
 
 RETURNED_STATUSES = ("requested", "approved", "completed")
 
@@ -190,6 +191,8 @@ def _restock_items(
     db: Session,
     request: ReturnRequest,
     note: str,
+    *,
+    actor_user_id: int | None = None,
 ) -> None:
     if request.stock_restocked_at is not None:
         return
@@ -219,8 +222,25 @@ def _restock_items(
             )
 
             if variant is not None:
+                stock_before = variant.stock
                 variant.stock += item.quantity
                 item.restocked_at = utcnow()
+                record_stock_movement(
+                    db,
+                    variant=variant,
+                    movement_type="return_restocked",
+                    quantity_delta=item.quantity,
+                    stock_before=stock_before,
+                    stock_after=variant.stock,
+                    product_name=item.product_name,
+                    size=item.size,
+                    color=item.color,
+                    sku=item.sku,
+                    reason=f"Return #{request.id} completed.",
+                    order_id=request.order_id,
+                    return_request_id=request.id,
+                    actor_user_id=actor_user_id,
+                )
 
     request.stock_restocked_at = utcnow()
     request.completed_at = utcnow()
@@ -285,7 +305,12 @@ def review_return(
         )
 
     if next_status == "completed":
-        _restock_items(db, request, "Return completed and items restocked.")
+        _restock_items(
+            db,
+            request,
+            "Return completed and items restocked.",
+            actor_user_id=admin_user.id,
+        )
     else:
         request.status = next_status
 

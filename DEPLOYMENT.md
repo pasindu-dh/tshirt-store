@@ -297,6 +297,23 @@ once, and marks pending/failed payment attempts cancelled with an audit event.
 Order/payment row locking prevents duplicate releases and limits overselling
 on PostgreSQL.
 
+### Inventory audit and low-stock alerts
+
+Every variant has a `low_stock_threshold` (default `5`) that can be edited in
+the admin product editor. The admin Inventory page lists active variants at or
+below their threshold and supports manual stock adjustments with a required
+reason. Stock movements are recorded for initial stock, order placement, order
+cancellation, reservation expiry, return restocking, variant removal, product
+deletion, and manual adjustments. Each movement snapshots the product name,
+size, color, and SKU, so the history remains readable after a product or
+variant is deleted. Movement history is available at:
+`GET /admin/inventory/movements`.
+
+The rollout migration records each existing variant's current stock as an
+opening `initial_stock` balance. Order, cancellation, and return paths lock
+variant rows before changing stock, so movement before/after values remain
+consistent. Manual adjustments reject changes that would make stock negative.
+
 ### Manual payment reconciliation
 
 Automatic PayHere lookup is not configured. If a notification is missed,
@@ -338,6 +355,7 @@ online payment.
 - [ ] PayHere merchant secret stored as a secret; sandbox disabled for live.
 - [ ] PayHere Merchant API key restricted to the required permissions/domain/IP.
 - [ ] Return workflow reviewed: item-level requests, admin completion before restocking, and return status emails.
+- [ ] Inventory low-stock thresholds reviewed per variant and the stock-movement audit history checked after a test order, cancellation, and return.
 - [ ] `APP_ENV=production`, `PAYMENT_PROVIDER=payhere`, and `PAYMENT_MOCK_ENABLED=false`.
 - [ ] `BACKEND_PUBLIC_URL/payments/payhere/notify` reachable over HTTPS.
 - [ ] Stock reservation expiry configured and, if the in-process sweeper is disabled, a cron job runs `python -m app.expire_reservations`.

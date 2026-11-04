@@ -81,6 +81,7 @@ class AdminOrderStatsOut(BaseModel):
     products_active: int
     categories_total: int
     low_stock_variants: int
+    out_of_stock_variants: int
     orders_total: int
     pending_orders: int
     confirmed_orders: int

@@ -12,6 +12,7 @@ from app.database import SessionLocal
 from app.routers import (
     admin,
     admin_coupons,
+    admin_inventory,
     admin_orders,
     admin_reports,
     admin_returns,
@@ -174,6 +175,7 @@ app.include_router(admin_coupons.router)
 app.include_router(admin_orders.router)
 app.include_router(admin_returns.router)
 app.include_router(admin_reports.router)
+app.include_router(admin_inventory.router)
 app.include_router(admin_stats.router)
 app.include_router(uploads.router)
 

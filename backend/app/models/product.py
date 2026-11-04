@@ -82,5 +82,8 @@ class ProductVariant(Base):
     color: Mapped[str] = mapped_column(String(40), default="Black")
     sku: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     stock: Mapped[int] = mapped_column(Integer, default=0)
+    low_stock_threshold: Mapped[int] = mapped_column(
+        Integer, default=5, server_default="5"
+    )
 
     product: Mapped["Product"] = relationship(back_populates="variants")

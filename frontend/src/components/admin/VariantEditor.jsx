@@ -10,7 +10,13 @@ function VariantEditor({ variants, onChange }) {
   const addVariant = () => {
     onChange([
       ...variants,
-      { size: "M", color: "Black", sku: "", stock: "0" },
+      {
+        size: "M",
+        color: "Black",
+        sku: "",
+        stock: "0",
+        low_stock_threshold: "5",
+      },
     ]);
   };
 
@@ -24,13 +30,14 @@ function VariantEditor({ variants, onChange }) {
   return (
     <div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[560px] text-sm">
+        <table className="w-full min-w-[680px] text-sm">
           <thead className="text-left text-gray-400">
             <tr>
               <th className="pb-2">Size</th>
               <th className="pb-2">Color</th>
               <th className="pb-2">SKU</th>
               <th className="pb-2">Stock</th>
+              <th className="pb-2">Alert at</th>
               <th className="pb-2" />
             </tr>
           </thead>
@@ -82,6 +89,25 @@ function VariantEditor({ variants, onChange }) {
                       updateVariant(index, "stock", event.target.value)
                     }
                     aria-label={`Variant ${index + 1} stock`}
+                    className={inputClass}
+                  />
+                </td>
+
+                <td className="pr-2 py-1">
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    max="100000"
+                    value={variant.low_stock_threshold}
+                    onChange={(event) =>
+                      updateVariant(
+                        index,
+                        "low_stock_threshold",
+                        event.target.value
+                      )
+                    }
+                    aria-label={`Variant ${index + 1} low-stock threshold`}
                     className={inputClass}
                   />
                 </td>

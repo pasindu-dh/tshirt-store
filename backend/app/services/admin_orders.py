@@ -100,7 +100,11 @@ def get_order(db: Session, order_id: int) -> Order | None:
 
 
 def update_status(
-    db: Session, order: Order, payload: OrderStatusUpdate
+    db: Session,
+    order: Order,
+    payload: OrderStatusUpdate,
+    *,
+    actor_user_id: int | None = None,
 ) -> Order:
     new_status = payload.status
     current_status = order.status
@@ -121,7 +125,12 @@ def update_status(
         )
 
     if new_status == "cancelled":
-        release_order_stock(db, order, reason="cancelled")
+        release_order_stock(
+            db,
+            order,
+            reason="cancelled",
+            actor_user_id=actor_user_id,
+        )
 
         if order.payment_status not in {"paid", "chargedback"}:
             order.payment_status = "cancelled"
@@ -253,7 +262,16 @@ def get_stats(db: Session) -> AdminOrderStatsOut:
         select(func.count(ProductVariant.id))
         .join(Product, ProductVariant.product_id == Product.id)
         .where(
-            ProductVariant.stock <= 5,
+            ProductVariant.stock
+            <= ProductVariant.low_stock_threshold,
+            Product.is_active.is_(True),
+        )
+    ) or 0
+    out_of_stock_variants = db.scalar(
+        select(func.count(ProductVariant.id))
+        .join(Product, ProductVariant.product_id == Product.id)
+        .where(
+            ProductVariant.stock <= 0,
             Product.is_active.is_(True),
         )
     ) or 0
@@ -263,6 +281,7 @@ def get_stats(db: Session) -> AdminOrderStatsOut:
         products_active=products_active,
         categories_total=categories_total,
         low_stock_variants=low_stock_variants,
+        out_of_stock_variants=out_of_stock_variants,
         orders_total=orders_total,
         pending_orders=status_counts.get("pending", 0),
         confirmed_orders=status_counts.get("confirmed", 0),

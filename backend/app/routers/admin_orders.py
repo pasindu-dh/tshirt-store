@@ -375,6 +375,7 @@ def update_order_status(
     order_id: int,
     payload: OrderStatusUpdate,
     background_tasks: BackgroundTasks,
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     order = admin_orders.get_order(db, order_id)
@@ -386,7 +387,12 @@ def update_order_status(
         )
 
     try:
-        updated = admin_orders.update_status(db, order, payload)
+        updated = admin_orders.update_status(
+            db,
+            order,
+            payload,
+            actor_user_id=current_user.id,
+        )
     except HTTPException:
         db.rollback()
         raise

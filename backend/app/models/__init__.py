@@ -1,6 +1,7 @@
 from app.models.cart import CartItem
 from app.models.category import Category
 from app.models.coupon import Coupon
+from app.models.inventory import StockMovement
 from app.models.order import Order, OrderItem
 from app.models.payment import Payment, PaymentEvent, Refund
 from app.models.product import Product, ProductImage, ProductVariant
@@ -20,6 +21,7 @@ __all__ = [
     "Refund",
     "ReturnRequest",
     "ReturnItem",
+    "StockMovement",
     "Product",
     "ProductImage",
     "ProductVariant",

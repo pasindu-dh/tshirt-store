@@ -12,7 +12,7 @@ function AdminLayout() {
     <div className="min-h-screen px-6 md:px-10 pb-20 pt-8">
       <h1 className="text-4xl font-bold text-center">Admin</h1>
       <p className="text-center text-gray-400 mt-2">
-        Manage orders, returns, finance, products, categories, and stock
+        Manage orders, returns, finance, inventory, products, and categories
       </p>
 
       <nav className="flex flex-wrap justify-center gap-3 mt-8">
@@ -30,6 +30,10 @@ function AdminLayout() {
 
         <NavLink to="/admin/reports" className={tabClass}>
           Reports
+        </NavLink>
+
+        <NavLink to="/admin/inventory" className={tabClass}>
+          Inventory
         </NavLink>
 
         <NavLink to="/admin/products" className={tabClass}>

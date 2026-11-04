@@ -107,7 +107,11 @@ function AdminDashboard() {
             <StatCard
               label="Low-stock variants"
               value={stats?.low_stock_variants}
-              hint="5 or fewer units remaining"
+              hint={
+                stats
+                  ? `At or below threshold · ${stats.out_of_stock_variants} out of stock`
+                  : "At or below each variant's threshold"
+              }
             />
           </div>
 
@@ -214,6 +218,17 @@ function AdminDashboard() {
               <p className="text-sm text-gray-400 mt-2">
                 Review gross revenue, refunds, returns, and period
                 summaries.
+              </p>
+            </Link>
+
+            <Link
+              to="/admin/inventory"
+              className="bg-[#020617] border border-cyan-500/40 rounded-2xl p-5 hover:border-cyan-400 transition"
+            >
+              <h3 className="font-semibold">Inventory</h3>
+              <p className="text-sm text-gray-400 mt-2">
+                Review low-stock alerts and adjust stock with an
+                audit trail.
               </p>
             </Link>
           </div>

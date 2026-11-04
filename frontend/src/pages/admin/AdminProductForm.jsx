@@ -11,7 +11,13 @@ import ImageManager from "../../components/admin/ImageManager";
 import VariantEditor from "../../components/admin/VariantEditor";
 import { getApiError } from "../../utils/errors";
 
-const EMPTY_VARIANT = { size: "M", color: "Black", sku: "", stock: "0" };
+const EMPTY_VARIANT = {
+  size: "M",
+  color: "Black",
+  sku: "",
+  stock: "0",
+  low_stock_threshold: "5",
+};
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
@@ -81,6 +87,9 @@ function AdminProductForm() {
                 color: variant.color,
                 sku: variant.sku,
                 stock: String(variant.stock),
+                low_stock_threshold: String(
+                  variant.low_stock_threshold
+                ),
               }))
             : [{ ...EMPTY_VARIANT }]
         );
@@ -193,6 +202,9 @@ function AdminProductForm() {
       color: variant.color.trim(),
       sku: variant.sku.trim(),
       stock: Number(variant.stock),
+      low_stock_threshold: Number(
+        variant.low_stock_threshold
+      ),
     }));
 
     if (
@@ -210,6 +222,20 @@ function AdminProductForm() {
       )
     ) {
       setError("Variant stock must be a whole number of 0 or more.");
+      return;
+    }
+
+    if (
+      normalizedVariants.some(
+        (variant) =>
+          !Number.isInteger(variant.low_stock_threshold) ||
+          variant.low_stock_threshold < 0 ||
+          variant.low_stock_threshold > 100000
+      )
+    ) {
+      setError(
+        "Low-stock thresholds must be whole numbers between 0 and 100000."
+      );
       return;
     }
 

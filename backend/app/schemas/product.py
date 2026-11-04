@@ -19,6 +19,7 @@ class ProductVariantOut(BaseModel):
     color: str
     sku: str
     stock: int
+    low_stock_threshold: int
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -28,6 +29,9 @@ class ProductVariantIn(BaseModel):
     color: str = Field(default="Black", min_length=1, max_length=40)
     sku: str = Field(min_length=1, max_length=80)
     stock: int = Field(default=0, ge=0)
+    low_stock_threshold: int = Field(
+        default=5, ge=0, le=100000
+    )
 
     model_config = ConfigDict(extra="forbid")
 

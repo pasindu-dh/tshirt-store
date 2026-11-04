@@ -16,6 +16,7 @@ from app.models import (
 from app.models.common import utcnow
 from app.schemas.order import OrderCreate
 from app.services import coupons as coupon_service
+from app.services.inventory import record_stock_movement
 
 
 def get_orders(db: Session, user_id: int) -> list[Order]:
@@ -152,6 +153,8 @@ def create_order(
         reservation_expires_at=reservation_expires_at,
     )
 
+    stock_entries = []
+
     for item in cart_items:
         variant = variants_by_id[item.variant_id]
         product = variant.product
@@ -172,15 +175,47 @@ def create_order(
                 line_total=product.price * item.quantity,
             )
         )
+        stock_before = variant.stock
         variant.stock -= item.quantity
+        stock_entries.append(
+            (
+                variant,
+                product.name,
+                stock_before,
+                variant.stock,
+            )
+        )
         db.delete(item)
 
     db.add(order)
 
-    if coupon is not None:
-        coupon.used_count += 1
-
     try:
+        db.flush()
+
+        for (
+            variant,
+            product_name,
+            stock_before,
+            stock_after,
+        ) in stock_entries:
+            record_stock_movement(
+                db,
+                variant=variant,
+                movement_type="order_placed",
+                quantity_delta=stock_after - stock_before,
+                stock_before=stock_before,
+                stock_after=stock_after,
+                product_name=product_name,
+                size=variant.size,
+                color=variant.color,
+                sku=variant.sku,
+                reason=f"Order #{order.id} placed.",
+                order_id=order.id,
+            )
+
+        if coupon is not None:
+            coupon.used_count += 1
+
         db.commit()
     except Exception:
         db.rollback()

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import require_admin
+from app.models import User
 from app.schemas.category import CategoryCreate, CategoryOut, CategoryUpdate
 from app.schemas.product import ProductCreate, ProductOut, ProductUpdate
 from app.services import catalog
@@ -81,11 +82,17 @@ def get_admin_product(product_id: int, db: Session = Depends(get_db)):
     response_model=ProductOut,
     status_code=status.HTTP_201_CREATED,
 )
-def create_product(payload: ProductCreate, db: Session = Depends(get_db)):
+def create_product(
+    payload: ProductCreate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
     _validate_category(payload.category_id, db)
 
     try:
-        return catalog.create_product(db, payload)
+        return catalog.create_product(
+            db, payload, actor_user_id=current_user.id
+        )
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(
@@ -98,6 +105,7 @@ def create_product(payload: ProductCreate, db: Session = Depends(get_db)):
 def update_product(
     product_id: int,
     payload: ProductUpdate,
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     product = _require_product(product_id, db)
@@ -106,7 +114,12 @@ def update_product(
         _validate_category(payload.category_id, db)
 
     try:
-        return catalog.update_product(db, product, payload)
+        return catalog.update_product(
+            db,
+            product,
+            payload,
+            actor_user_id=current_user.id,
+        )
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(
@@ -116,9 +129,15 @@ def update_product(
 
 
 @router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_product(product_id: int, db: Session = Depends(get_db)):
+def delete_product(
+    product_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
     product = _require_product(product_id, db)
-    catalog.delete_product(db, product)
+    catalog.delete_product(
+        db, product, actor_user_id=current_user.id
+    )
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

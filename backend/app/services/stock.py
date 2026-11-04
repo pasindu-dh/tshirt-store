@@ -5,11 +5,16 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models import Coupon, Order, Payment, ProductVariant
 from app.models.common import utcnow
+from app.services.inventory import record_stock_movement
 from app.services.payment_events import record_event
 
 
 def release_order_stock(
-    db: Session, order: Order, *, reason: str
+    db: Session,
+    order: Order,
+    *,
+    reason: str,
+    actor_user_id: int | None = None,
 ) -> bool:
     """Release an order's reserved stock and coupon usage exactly once."""
 
@@ -39,6 +44,16 @@ def release_order_stock(
         variants_by_id = {
             variant.id: variant for variant in variants
         }
+        movement_type = (
+            "reservation_expired"
+            if reason == "expired"
+            else "order_cancelled"
+        )
+        movement_reason = (
+            "Reservation expired; reserved stock restored."
+            if reason == "expired"
+            else "Order cancelled; reserved stock restored."
+        )
 
         for item in order.items:
             variant = (
@@ -48,7 +63,23 @@ def release_order_stock(
             )
 
             if variant is not None:
+                stock_before = variant.stock
                 variant.stock += item.quantity
+                record_stock_movement(
+                    db,
+                    variant=variant,
+                    movement_type=movement_type,
+                    quantity_delta=item.quantity,
+                    stock_before=stock_before,
+                    stock_after=variant.stock,
+                    product_name=item.product_name,
+                    size=item.size,
+                    color=item.color,
+                    sku=item.sku,
+                    reason=movement_reason,
+                    order_id=order.id,
+                    actor_user_id=actor_user_id,
+                )
 
     if order.discount_code:
         coupon = db.scalar(
