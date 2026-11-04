@@ -9,6 +9,7 @@ from app.schemas.inventory import (
     LowStockVariantOut,
     StockAdjustmentRequest,
 )
+from app.services.notifications import maybe_notify_low_stock
 
 
 def record_stock_movement(
@@ -249,6 +250,13 @@ def adjust_stock(
         sku=variant.sku,
         reason=payload.reason.strip(),
         actor_user_id=actor_user_id,
+    )
+    maybe_notify_low_stock(
+        db,
+        variant=variant,
+        stock_before=stock_before,
+        stock_after=new_stock,
+        product_name=product.name,
     )
     db.commit()
 

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.models import Category, Product, ProductImage, ProductVariant
 from app.schemas.product import ProductCreate, ProductUpdate, ProductVariantIn
 from app.services.inventory import record_stock_movement
+from app.services.notifications import maybe_notify_low_stock
 from app.utils.slug import unique_slug
 
 PRODUCT_LOAD_OPTIONS = (
@@ -380,6 +381,13 @@ def _sync_variants(
             sku=existing.sku,
             reason="Variant updated in product editor.",
             actor_user_id=actor_user_id,
+        )
+        maybe_notify_low_stock(
+            db,
+            variant=existing,
+            stock_before=stock_before,
+            stock_after=existing.stock,
+            product_name=product.name,
         )
 
     if matched:

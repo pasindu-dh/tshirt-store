@@ -33,6 +33,9 @@ const AdminInventory = lazy(
   () => import("./pages/admin/AdminInventory")
 );
 const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
+const AdminNotifications = lazy(
+  () => import("./pages/admin/AdminNotifications")
+);
 const AdminOrderDetail = lazy(
   () => import("./pages/admin/AdminOrderDetail")
 );
@@ -145,6 +148,10 @@ function App() {
                 <Route
                   path="customers/:customerId"
                   element={<AdminCustomerDetail />}
+                />
+                <Route
+                  path="notifications"
+                  element={<AdminNotifications />}
                 />
                 <Route path="returns" element={<AdminReturns />} />
                 <Route path="reports" element={<AdminReports />} />

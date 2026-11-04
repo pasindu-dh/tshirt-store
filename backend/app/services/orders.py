@@ -17,6 +17,10 @@ from app.models.common import utcnow
 from app.schemas.order import OrderCreate
 from app.services import coupons as coupon_service
 from app.services.inventory import record_stock_movement
+from app.services.notifications import (
+    create_notification,
+    maybe_notify_low_stock,
+)
 
 
 def get_orders(db: Session, user_id: int) -> list[Order]:
@@ -212,6 +216,24 @@ def create_order(
                 reason=f"Order #{order.id} placed.",
                 order_id=order.id,
             )
+            maybe_notify_low_stock(
+                db,
+                variant=variant,
+                stock_before=stock_before,
+                stock_after=stock_after,
+                product_name=product_name,
+            )
+
+        create_notification(
+            db,
+            notification_type="new_order",
+            title=f"New order #{order.id}",
+            message=(
+                f"{order.contact_name} placed an order for "
+                f"LKR {order.total}."
+            ),
+            link=f"/admin/orders/{order.id}",
+        )
 
         if coupon is not None:
             coupon.used_count += 1

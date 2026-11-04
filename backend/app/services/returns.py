@@ -21,6 +21,7 @@ from app.schemas.return_request import (
     ReturnReviewRequest,
 )
 from app.services.inventory import record_stock_movement
+from app.services.notifications import create_notification
 
 RETURNED_STATUSES = ("requested", "approved", "completed")
 
@@ -226,6 +227,17 @@ def create_return_request(
         items=items,
     )
     db.add(request)
+    db.flush()
+    create_notification(
+        db,
+        notification_type="new_return",
+        title=f"New return request #{request.id}",
+        message=(
+            f"{order.contact_name} requested a return for "
+            f"order #{order.id}."
+        ),
+        link="/admin/returns",
+    )
     db.commit()
     db.refresh(request)
 

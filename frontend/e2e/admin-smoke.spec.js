@@ -36,6 +36,7 @@ test("admin pages and readiness checks load", async ({
     ["/admin", "Dashboard"],
     ["/admin/orders", "Orders"],
     ["/admin/customers", "Customers"],
+    ["/admin/notifications", "Notifications"],
     ["/admin/returns", "Returns"],
     ["/admin/reports", "Financial reports"],
     ["/admin/reports/products", "Product performance"],

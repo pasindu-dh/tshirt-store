@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
+import NotificationBell from "../../components/admin/NotificationBell";
 
 const tabClass = ({ isActive }) =>
   `px-4 py-2 rounded-lg text-sm font-semibold transition ${
@@ -58,6 +59,8 @@ function AdminLayout() {
         >
           View store
         </NavLink>
+
+        <NotificationBell />
       </nav>
 
       <div className="max-w-6xl mx-auto mt-10">

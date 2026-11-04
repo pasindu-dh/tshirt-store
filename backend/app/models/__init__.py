@@ -2,6 +2,7 @@ from app.models.cart import CartItem
 from app.models.category import Category
 from app.models.coupon import Coupon
 from app.models.inventory import StockMovement
+from app.models.notification import AdminNotification
 from app.models.order import Order, OrderItem
 from app.models.payment import Payment, PaymentEvent, Refund
 from app.models.product import Product, ProductImage, ProductVariant
@@ -11,6 +12,7 @@ from app.models.user import User
 from app.models.wishlist import WishlistItem
 
 __all__ = [
+    "AdminNotification",
     "CartItem",
     "Category",
     "Coupon",
