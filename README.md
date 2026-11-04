@@ -63,7 +63,7 @@ tshirt-store/
 │   ├── src/              # React components, pages, API client, context
 │   │   ├── test/         # Vitest setup
 │   │   ├── utils/        # Cart and error helpers
-│   │   └── pages/admin/  # Dashboard, orders, products, categories, and coupons
+│   │   └── pages/admin/  # Dashboard, orders, customers, returns, reports, inventory, catalog
 │   ├── package.json
 │   ├── playwright.config.js
 │   └── vite.config.js
@@ -212,6 +212,8 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 - `POST /admin/categories`: Create a category.
 - `PUT /admin/categories/{id}`: Rename a category.
 - `DELETE /admin/categories/{id}`: Delete an empty category.
+- `GET /admin/customers`: Paginated customer directory with optional name/email/customer-number search; returns order counts, delivered/cancelled counts, gross/net spend (completed refunds subtracted), pending refunds, return totals/open returns, and the last order date with `X-Total-Count`.
+- `GET /admin/customers/{id}`: Customer profile plus lifetime aggregates, recent orders (up to 100), and recent return requests (up to 100).
 - `GET /admin/orders`: Paginated order list with optional `status`, `search`, `date_from`, and `date_to` filters; returns `X-Total-Count`.
 - `GET /admin/orders/{id}`: Full order detail for any customer order.
 - `PATCH /admin/orders/{id}/status`: Advance an order through `pending → confirmed → shipped → delivered`, or cancel from `pending`/`confirmed`. Online orders must be paid before they can be delivered. Cancelling restores reserved stock/coupon usage once; delivering marks COD payment as paid. Status changes send an email when SMTP is configured.
@@ -235,6 +237,7 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 Sign in at `/login` with an admin account to manage the store:
 
 - **Dashboard**: gross and net delivered revenue, completed/pending refunds, open returns, order status counts, low-stock variants, product/category totals, and quick actions.
+- **Customers**: searchable customer directory with joined date, order counts, delivered/cancelled counts, gross/net lifetime spend, completed/pending refunds, return totals, open returns, and last order date. Open a customer to see their orders and return requests.
 - **Orders**: search by order number/customer, filter by status and date range, paginate, and open order details.
 - **Order detail**: review customer/shipping/payment details, items, totals, discounts, notes, payment attempts, PayHere references, transaction IDs, refunds/returns, return requests, and event history; confirm, ship, deliver, or cancel orders. Online orders cannot be delivered until payment is paid. Admins can verify payments through PayHere, record manual reconciliation, record manual or provider-processed refunds/returns, approve/reject customer return requests, mark approved returns completed to restock the returned items, and link a refund to an approved or completed return.
 - **Returns**: a global queue of return requests with status filters, return/order/customer search, selected item quantities, and linked refund status; open an order to review or complete a return.
@@ -269,7 +272,7 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-Coverage includes authentication and role guards, login rate limiting, catalog filters and slug lookup, cart stock caps and guest-cart merging, transactional order creation and stock decrement, coupon previews/discounts/usage rules, admin status transitions and cancellation restock, dashboard stats, reviews, wishlist privacy, upload validation, security headers, CORS, order date filters, mock online payments, PayHere signature/amount verification, chargebacks, duplicate/delayed notifications, stock reservation expiry, fulfillment guards, manual reconciliation, refund/return records, provider reconciliation/refund adapters, item-level customer return requests, quantity validation, cancellation and reapplication, completion restocking without double restock, the global admin return queue, and payment/return email timing. Financial reporting tests cover partial and full refunds, pending refund totals, date-filtered gross/net revenue, day/month grouping, return totals and returned units, dashboard net revenue, and admin-only access. Inventory tests cover stock movements for orders, cancellations, and return restocks; manual adjustments and validation; per-variant thresholds; movement filters and access guards; product deletion snapshots; and variant-ID preservation when editing products.
+Coverage includes authentication and role guards, login rate limiting, catalog filters and slug lookup, cart stock caps and guest-cart merging, transactional order creation and stock decrement, coupon previews/discounts/usage rules, admin status transitions and cancellation restock, dashboard stats, reviews, wishlist privacy, upload validation, security headers, CORS, order date filters, mock online payments, PayHere signature/amount verification, chargebacks, duplicate/delayed notifications, stock reservation expiry, fulfillment guards, manual reconciliation, refund/return records, provider reconciliation/refund adapters, item-level customer return requests, quantity validation, cancellation and reapplication, completion restocking without double restock, the global admin return queue, and payment/return email timing. Financial reporting tests cover partial and full refunds, pending refund totals, date-filtered gross/net revenue, day/month grouping, return totals and returned units, dashboard net revenue, and admin-only access. Inventory tests cover stock movements for orders, cancellations, and return restocks; manual adjustments and validation; per-variant thresholds; movement filters and access guards; product deletion snapshots; and variant-ID preservation when editing products. Customer-management tests cover directory filtering, admin/customer access separation, order and return aggregates, lifetime gross/net spend, pending and completed refunds, and customer detail order/return histories.
 
 ### Frontend
 

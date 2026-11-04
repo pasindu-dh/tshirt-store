@@ -8,7 +8,7 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
     app_name: str = "FURZY T-Shirt Store API"
-    app_version: str = "0.9.6"
+    app_version: str = "0.9.7"
     app_env: str = "development"
 
     # Default to an absolute path so the database location never depends on CWD.
