@@ -1,10 +1,16 @@
-from sqlalchemy import func, select
+from datetime import date, datetime, time, timedelta
+
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Order, Payment, Refund, User
 from app.models.common import utcnow
-from app.schemas.payment import RefundCreate, RefundUpdate
+from app.schemas.payment import (
+    AdminRefundQueueOut,
+    RefundCreate,
+    RefundUpdate,
+)
 from app.services import payhere_api
 from app.services.payment_events import record_event
 
@@ -228,3 +234,105 @@ def update_refund(
     db.commit()
     db.refresh(refund)
     return refund
+
+
+def list_admin_refunds(
+    db: Session,
+    *,
+    page: int,
+    limit: int,
+    status_filter: str | None = None,
+    kind: str | None = None,
+    search: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> tuple[list[AdminRefundQueueOut], int]:
+    filters = []
+
+    if status_filter:
+        filters.append(Refund.status == status_filter)
+    if kind:
+        filters.append(Refund.kind == kind)
+    if date_from is not None:
+        filters.append(
+            Refund.created_at
+            >= datetime.combine(date_from, time.min)
+        )
+    if date_to is not None:
+        filters.append(
+            Refund.created_at
+            < datetime.combine(
+                date_to + timedelta(days=1), time.min
+            )
+        )
+
+    if search and search.strip():
+        term_value = search.strip()
+
+        if term_value.isdigit():
+            filters.append(
+                or_(
+                    Refund.id == int(term_value),
+                    Refund.order_id == int(term_value),
+                )
+            )
+        else:
+            term = f"%{term_value}%"
+            filters.append(
+                or_(
+                    Order.contact_name.ilike(term),
+                    Order.contact_email.ilike(term),
+                    Refund.reason.ilike(term),
+                    Refund.provider_refund_id.ilike(term),
+                    Payment.reference.ilike(term),
+                )
+            )
+
+    joined = (
+        select(Refund, Order, Payment)
+        .join(Order, Refund.order_id == Order.id)
+        .join(Payment, Refund.payment_id == Payment.id)
+    )
+    total = int(
+        db.scalar(
+            select(func.count(Refund.id))
+            .join(Order, Refund.order_id == Order.id)
+            .join(Payment, Refund.payment_id == Payment.id)
+            .where(*filters)
+        )
+        or 0
+    )
+    rows = db.execute(
+        joined.where(*filters)
+        .order_by(
+            Refund.created_at.desc(), Refund.id.desc()
+        )
+        .offset((page - 1) * limit)
+        .limit(limit)
+    ).all()
+
+    items = [
+        AdminRefundQueueOut(
+            id=refund.id,
+            order_id=refund.order_id,
+            payment_id=refund.payment_id,
+            amount=refund.amount,
+            kind=refund.kind,
+            status=refund.status,
+            provider=refund.provider,
+            provider_refund_id=refund.provider_refund_id,
+            reason=refund.reason,
+            notes=refund.notes,
+            created_at=refund.created_at,
+            completed_at=refund.completed_at,
+            order_contact_name=order.contact_name,
+            order_contact_email=order.contact_email,
+            order_total=order.total,
+            order_status=order.status,
+            order_payment_status=order.payment_status,
+            payment_reference=payment.reference,
+        )
+        for refund, order, payment in rows
+    ]
+
+    return items, total

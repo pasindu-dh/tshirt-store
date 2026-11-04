@@ -62,6 +62,27 @@ class RefundOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AdminRefundQueueOut(BaseModel):
+    id: int
+    order_id: int
+    payment_id: int
+    amount: int
+    kind: str
+    status: str
+    provider: str
+    provider_refund_id: str
+    reason: str
+    notes: str
+    created_at: datetime
+    completed_at: datetime | None
+    order_contact_name: str
+    order_contact_email: str
+    order_total: int
+    order_status: str
+    order_payment_status: str
+    payment_reference: str
+
+
 class RefundCreate(BaseModel):
     kind: Literal["refund", "return"] = "refund"
     amount: int = Field(ge=1)

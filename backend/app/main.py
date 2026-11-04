@@ -21,6 +21,7 @@ from app.routers import (
     admin_inventory,
     admin_notifications,
     admin_orders,
+    admin_refunds,
     admin_reports,
     admin_returns,
     admin_stats,
@@ -189,6 +190,7 @@ app.include_router(admin_reports.router)
 app.include_router(admin_inventory.router)
 app.include_router(admin_customers.router)
 app.include_router(admin_notifications.router)
+app.include_router(admin_refunds.router)
 app.include_router(admin_exports.router)
 app.include_router(health.router)
 app.include_router(admin_stats.router)

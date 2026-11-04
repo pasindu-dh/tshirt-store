@@ -38,6 +38,7 @@ test("admin pages and readiness checks load", async ({
     ["/admin/customers", "Customers"],
     ["/admin/notifications", "Notifications"],
     ["/admin/returns", "Returns"],
+    ["/admin/refunds", "Refunds"],
     ["/admin/reports", "Financial reports"],
     ["/admin/reports/products", "Product performance"],
     ["/admin/inventory", "Inventory"],

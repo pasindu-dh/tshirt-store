@@ -204,7 +204,8 @@ coupon it creates; reviews and wishlist entries are removed with the product.
 The online-payment step requires `PAYMENT_PROVIDER=mock` and
 `PAYMENT_MOCK_ENABLED=true` on the disposable backend. The admin smoke test
 checks `/health/ready` and loads the dashboard, orders, customers,
-notifications, returns, reports, product-performance, and inventory pages.
+notifications, returns, refunds, reports, product-performance, and inventory
+pages.
 
 If a Vite dev server is not already running, the Playwright config starts one
 on port 5173 using the default API URL. Set `E2E_API_URL` and `E2E_BASE_URL` to

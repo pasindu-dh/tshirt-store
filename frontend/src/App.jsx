@@ -43,6 +43,9 @@ const AdminOrders = lazy(() => import("./pages/admin/AdminOrders"));
 const AdminProductPerformance = lazy(
   () => import("./pages/admin/AdminProductPerformance")
 );
+const AdminRefunds = lazy(
+  () => import("./pages/admin/AdminRefunds")
+);
 const AdminReports = lazy(() => import("./pages/admin/AdminReports"));
 const AdminReturns = lazy(() => import("./pages/admin/AdminReturns"));
 const AdminProductForm = lazy(
@@ -154,6 +157,7 @@ function App() {
                   element={<AdminNotifications />}
                 />
                 <Route path="returns" element={<AdminReturns />} />
+                <Route path="refunds" element={<AdminRefunds />} />
                 <Route path="reports" element={<AdminReports />} />
                 <Route
                   path="reports/products"
