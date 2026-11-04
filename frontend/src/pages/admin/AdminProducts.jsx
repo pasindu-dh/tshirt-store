@@ -7,6 +7,8 @@ import {
 } from "../../api/admin";
 import { imageUrl } from "../../api/client";
 import { getCategories } from "../../api/categories";
+import { downloadCatalogCsv } from "../../api/adminExports";
+import ExportCsvButton from "../../components/admin/ExportCsvButton";
 import { getApiError } from "../../utils/errors";
 
 const PAGE_SIZE = 10;
@@ -142,12 +144,24 @@ function AdminProducts() {
           </p>
         </div>
 
-        <Link
-          to="/admin/products/new"
-          className="bg-cyan-400 text-black px-5 py-2 rounded-lg font-semibold hover:bg-cyan-300 transition text-center"
-        >
-          Add product
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to="/admin/products/import"
+            className="border border-gray-700 text-gray-300 px-4 py-2 rounded-lg text-sm font-semibold hover:border-cyan-400 hover:text-cyan-400 transition"
+          >
+            Import CSV
+          </Link>
+          <ExportCsvButton
+            label="Export catalog CSV"
+            onExport={() => downloadCatalogCsv()}
+          />
+          <Link
+            to="/admin/products/new"
+            className="bg-cyan-400 text-black px-5 py-2 rounded-lg font-semibold hover:bg-cyan-300 transition text-center"
+          >
+            Add product
+          </Link>
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mt-6">

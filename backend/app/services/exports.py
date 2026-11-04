@@ -3,10 +3,11 @@ import io
 from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.models import Order, Refund
+from app.models import Order, Product, Refund
 from app.services import admin_orders, customers, inventory, reporting, returns
+from app.services.catalog_import import CATALOG_HEADERS
 
 EXPORT_LIMIT = 100000
 
@@ -326,6 +327,55 @@ def stock_movement_rows(
         for movement in movements
     ]
     return headers, rows
+
+
+def catalog_rows(
+    db: Session,
+) -> tuple[list[str], list[list]]:
+    products = db.scalars(
+        select(Product)
+        .options(
+            joinedload(Product.category),
+            selectinload(Product.images),
+            selectinload(Product.variants),
+        )
+        .order_by(Product.id)
+    ).all()
+    rows = []
+
+    for product in products:
+        image_urls = "|".join(
+            image.url for image in product.images
+        )
+        variants = product.variants or [None]
+
+        for variant in variants:
+            rows.append(
+                [
+                    product.slug,
+                    product.name,
+                    product.description,
+                    product.price,
+                    (
+                        product.category.slug
+                        if product.category
+                        else ""
+                    ),
+                    "true" if product.is_active else "false",
+                    image_urls,
+                    variant.size if variant else "",
+                    variant.color if variant else "",
+                    variant.sku if variant else "",
+                    variant.stock if variant else "",
+                    (
+                        variant.low_stock_threshold
+                        if variant
+                        else ""
+                    ),
+                ]
+            )
+
+    return CATALOG_HEADERS, rows
 
 
 def financial_rows(

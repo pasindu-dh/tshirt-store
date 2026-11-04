@@ -42,6 +42,7 @@ test("admin pages and readiness checks load", async ({
     ["/admin/reports", "Financial reports"],
     ["/admin/reports/products", "Product performance"],
     ["/admin/inventory", "Inventory"],
+    ["/admin/products/import", "Import product catalog"],
   ];
 
   for (const [path, heading] of pages) {

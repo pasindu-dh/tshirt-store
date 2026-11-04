@@ -104,7 +104,7 @@ def create_product(
         is_active=payload.is_active,
     )
     product.images = _build_images(payload.images)
-    product.variants = _build_variants(payload.variants)
+    product.variants = build_variants(payload.variants)
 
     db.add(product)
     db.flush()
@@ -152,7 +152,7 @@ def update_product(
             product.images = _build_images(new_urls)
 
     if "variants" in payload.model_fields_set:
-        _sync_variants(
+        sync_variants(
             db,
             product,
             payload.variants or [],
@@ -231,7 +231,7 @@ def _build_images(urls: list[str]) -> list[ProductImage]:
     ]
 
 
-def _build_variants(variants: list[ProductVariantIn]) -> list[ProductVariant]:
+def build_variants(variants: list[ProductVariantIn]) -> list[ProductVariant]:
     return [
         ProductVariant(
             size=variant.size.strip(),
@@ -248,12 +248,13 @@ def _variant_key(size: str, color: str) -> tuple[str, str]:
     return (size.strip().lower(), color.strip().lower())
 
 
-def _sync_variants(
+def sync_variants(
     db: Session,
     product: Product,
     incoming_variants: list[ProductVariantIn],
     *,
     actor_user_id: int | None = None,
+    remove_missing: bool = True,
 ) -> None:
     """Update variants in place so IDs and stock history are preserved."""
 
@@ -309,11 +310,15 @@ def _sync_variants(
         else:
             new_entries.append(incoming)
 
-    removed = [
-        variant
-        for variant in product.variants
-        if variant.id not in used_existing_ids
-    ]
+    removed = (
+        [
+            variant
+            for variant in product.variants
+            if variant.id not in used_existing_ids
+        ]
+        if remove_missing
+        else []
+    )
 
     for variant in removed:
         if variant.stock <= 0:

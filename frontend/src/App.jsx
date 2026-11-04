@@ -20,6 +20,9 @@ const ProductDetail = lazy(() => import("./pages/ProductDetail"));
 const Register = lazy(() => import("./pages/Register"));
 const Shop = lazy(() => import("./pages/Shop"));
 const Wishlist = lazy(() => import("./pages/Wishlist"));
+const AdminCatalogImport = lazy(
+  () => import("./pages/admin/AdminCatalogImport")
+);
 const AdminCategories = lazy(() => import("./pages/admin/AdminCategories"));
 const AdminCoupons = lazy(() => import("./pages/admin/AdminCoupons"));
 const AdminCustomerDetail = lazy(
@@ -168,6 +171,10 @@ function App() {
                   element={<AdminInventory />}
                 />
                 <Route path="products" element={<AdminProducts />} />
+                <Route
+                  path="products/import"
+                  element={<AdminCatalogImport />}
+                />
                 <Route path="products/new" element={<AdminProductForm />} />
                 <Route
                   path="products/:productId/edit"

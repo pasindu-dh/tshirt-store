@@ -73,6 +73,12 @@ def _csv_response(
     )
 
 
+@router.get("/products.csv")
+def export_products(db: Session = Depends(get_db)):
+    headers, rows = exports.catalog_rows(db)
+    return _csv_response("products", headers, rows)
+
+
 @router.get("/orders.csv")
 def export_orders(
     status_filter: OrderStatusFilter | None = Query(

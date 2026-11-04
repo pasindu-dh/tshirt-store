@@ -54,3 +54,11 @@ export function downloadFinancialCsv(params = {}) {
     "financial"
   );
 }
+
+export function downloadCatalogCsv() {
+  return downloadCsv(
+    "/admin/exports/products.csv",
+    {},
+    "products"
+  );
+}
