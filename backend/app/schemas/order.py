@@ -89,4 +89,10 @@ class AdminOrderStatsOut(BaseModel):
     cancelled_orders: int
     open_orders: int
     revenue: int
+    gross_revenue: int
+    refunded_total: int
+    pending_refund_total: int
+    refund_count: int
+    open_returns: int
+    returns_total: int
 

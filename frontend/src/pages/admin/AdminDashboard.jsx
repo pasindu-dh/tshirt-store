@@ -86,9 +86,13 @@ function AdminDashboard() {
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
             <StatCard
-              label="Revenue (delivered)"
+              label="Net revenue (delivered)"
               value={stats ? `LKR ${stats.revenue}` : null}
-              hint="Cash collected on delivered orders"
+              hint={
+                stats
+                  ? `Gross LKR ${stats.gross_revenue} − refunds LKR ${stats.refunded_total}`
+                  : undefined
+              }
             />
             <StatCard
               label="Open orders"
@@ -104,6 +108,31 @@ function AdminDashboard() {
               label="Low-stock variants"
               value={stats?.low_stock_variants}
               hint="5 or fewer units remaining"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+            <SmallStat
+              label="Gross revenue"
+              value={
+                stats ? `LKR ${stats.gross_revenue}` : null
+              }
+            />
+            <SmallStat
+              label="Refunds completed"
+              value={
+                stats ? `LKR ${stats.refunded_total}` : null
+              }
+            />
+            <SmallStat
+              label="Pending refunds"
+              value={
+                stats ? `LKR ${stats.pending_refund_total}` : null
+              }
+            />
+            <SmallStat
+              label="Open returns"
+              value={stats?.open_returns}
             />
           </div>
 
@@ -174,6 +203,17 @@ function AdminDashboard() {
               <h3 className="font-semibold">Manage categories</h3>
               <p className="text-sm text-gray-400 mt-2">
                 Organize the catalog into shoppable groups.
+              </p>
+            </Link>
+
+            <Link
+              to="/admin/reports"
+              className="bg-[#020617] border border-cyan-500/40 rounded-2xl p-5 hover:border-cyan-400 transition"
+            >
+              <h3 className="font-semibold">Financial reports</h3>
+              <p className="text-sm text-gray-400 mt-2">
+                Review gross revenue, refunds, returns, and period
+                summaries.
               </p>
             </Link>
           </div>

@@ -223,17 +223,19 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 - `POST /admin/orders/{id}/payments/{payment_id}/reconcile`: Record a manually verified paid/failed/cancelled/chargedback result. The admin and note are preserved in the payment event history.
 - `POST /admin/orders/{id}/payments/{payment_id}/reconcile-provider`: Verify the payment against the PayHere Retrieval API and apply the provider-confirmed status.
 - `POST /admin/orders/{id}/payments/{payment_id}/refunds` and `PATCH /admin/orders/{id}/refunds/{refund_id}`: Record refunds/returns, optionally process via the PayHere Refund API, and complete or fail them with an audit trail.
-- `GET /admin/stats`: Dashboard aggregates — revenue from delivered orders, open/pending/delivered/cancelled counts, low-stock variants, and product/category totals.
+- `GET /admin/stats`: Dashboard aggregates — gross/net revenue from delivered orders, completed and pending refunds, open returns, order status counts, low-stock variants, and product/category totals.
+- `GET /admin/reports/financial`: Date-filtered financial report with optional `date_from`, `date_to`, and `group_by` (`day` or `month`). Returns gross revenue, completed/pending refunds, net revenue, delivered order counts, return totals/units, period rows, and refund/return status breakdowns.
 - `GET/POST /admin/coupons` and `PUT/DELETE /admin/coupons/{id}`: Manage percentage or fixed-amount coupons with minimum subtotals, usage limits, active windows, and active/inactive state.
 
 ## 🛍️ Admin Panel
 
 Sign in at `/login` with an admin account to manage the store:
 
-- **Dashboard**: delivered revenue, open/pending orders, low-stock variants, order/product/category counts, and quick actions.
+- **Dashboard**: gross and net delivered revenue, completed/pending refunds, open returns, order status counts, low-stock variants, product/category totals, and quick actions.
 - **Orders**: search by order number/customer, filter by status and date range, paginate, and open order details.
 - **Order detail**: review customer/shipping/payment details, items, totals, discounts, notes, payment attempts, PayHere references, transaction IDs, refunds/returns, return requests, and event history; confirm, ship, deliver, or cancel orders. Online orders cannot be delivered until payment is paid. Admins can verify payments through PayHere, record manual reconciliation, record manual or provider-processed refunds/returns, approve/reject customer return requests, mark approved returns completed to restock the returned items, and link a refund to an approved or completed return.
 - **Returns**: a global queue of return requests with status filters, return/order/customer search, selected item quantities, and linked refund status; open an order to review or complete a return.
+- **Reports**: a date-filtered financial report with daily or monthly grouping, gross/net revenue, completed and pending refunds, delivered order counts, return totals/units, and refund/return status breakdowns.
 - **Cancellation and chargebacks**: cancellation restores stock and coupon usage once; paid cancellations keep the payment as paid for manual refund handling. Chargedback payments are shown as a distinct state.
 - **Products**: search/filter/paginate, activate or deactivate, delete, and edit.
 - **Product editor**: upload images (choose a primary image), set price, category and visibility, and manage size/color/SKU/stock variants.
@@ -263,7 +265,7 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-Coverage includes authentication and role guards, login rate limiting, catalog filters and slug lookup, cart stock caps and guest-cart merging, transactional order creation and stock decrement, coupon previews/discounts/usage rules, admin status transitions and cancellation restock, dashboard stats, reviews, wishlist privacy, upload validation, security headers, CORS, order date filters, mock online payments, PayHere signature/amount verification, chargebacks, duplicate/delayed notifications, stock reservation expiry, fulfillment guards, manual reconciliation, refund/return records, provider reconciliation/refund adapters, item-level customer return requests, quantity validation, cancellation and reapplication, completion restocking without double restock, the global admin return queue, and payment/return email timing.
+Coverage includes authentication and role guards, login rate limiting, catalog filters and slug lookup, cart stock caps and guest-cart merging, transactional order creation and stock decrement, coupon previews/discounts/usage rules, admin status transitions and cancellation restock, dashboard stats, reviews, wishlist privacy, upload validation, security headers, CORS, order date filters, mock online payments, PayHere signature/amount verification, chargebacks, duplicate/delayed notifications, stock reservation expiry, fulfillment guards, manual reconciliation, refund/return records, provider reconciliation/refund adapters, item-level customer return requests, quantity validation, cancellation and reapplication, completion restocking without double restock, the global admin return queue, and payment/return email timing. Financial reporting tests cover partial and full refunds, pending refund totals, date-filtered gross/net revenue, day/month grouping, return totals and returned units, dashboard net revenue, and admin-only access.
 
 ### Frontend
 

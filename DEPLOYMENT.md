@@ -266,9 +266,12 @@ allowlist the server IP. Set `PAYHERE_API_APP_ID` and
   reference, and timestamps.
 
 Full refunds set the payment/order payment status to `refunded`; partial
-refunds remain recorded against a paid payment. Dashboard revenue excludes
-fully refunded and chargedback delivered orders, but does not currently
-subtract partial refunds from gross revenue. Customer self-service returns are
+refunds remain recorded against a paid payment. Dashboard revenue is net of
+completed refunds: gross revenue includes delivered orders that are paid or
+fully refunded, completed refunds are subtracted, pending/processing refunds
+are reported separately, and chargedback orders are excluded. The admin
+Reports page provides the same figures with date filters and daily/monthly
+grouping. Customer self-service returns are
 item-level: customers choose item quantities on a delivered order and can
 cancel a pending request. Admins approve or reject requests; marking an
 approved return completed restocks the returned variant quantities exactly

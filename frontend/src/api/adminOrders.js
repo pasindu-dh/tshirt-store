@@ -130,3 +130,10 @@ export async function getAdminStats() {
   const { data } = await client.get("/admin/stats");
   return data;
 }
+
+export async function getAdminFinancialReport(params = {}) {
+  const { data } = await client.get("/admin/reports/financial", {
+    params,
+  });
+  return data;
+}

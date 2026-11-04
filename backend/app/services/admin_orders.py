@@ -4,9 +4,21 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models import Category, Order, Payment, Product, ProductVariant
+from app.models import (
+    Category,
+    Order,
+    Payment,
+    Product,
+    ProductVariant,
+    Refund,
+    ReturnRequest,
+)
 from app.schemas.order import AdminOrderStatsOut, OrderStatusUpdate
 from app.services.payment_events import record_event
+from app.services.reporting import (
+    PENDING_REFUND_STATUSES,
+    REVENUE_PAYMENT_STATUSES,
+)
 from app.services.stock import release_order_stock
 
 ALLOWED_TRANSITIONS = {
@@ -181,15 +193,57 @@ def get_stats(db: Session) -> AdminOrderStatsOut:
         status_counts.get(item, 0)
         for item in ("pending", "confirmed", "shipped")
     )
-    revenue = int(
+    revenue_scope = (
+        Order.status == "delivered",
+        Order.payment_status.in_(REVENUE_PAYMENT_STATUSES),
+    )
+    gross_revenue = int(
         db.scalar(
             select(func.coalesce(func.sum(Order.total), 0)).where(
-                Order.status == "delivered",
-                Order.payment_status == "paid",
+                *revenue_scope
             )
         )
         or 0
     )
+    refunded_total = int(
+        db.scalar(
+            select(func.coalesce(func.sum(Refund.amount), 0))
+            .join(Order, Refund.order_id == Order.id)
+            .where(*revenue_scope, Refund.status == "refunded")
+        )
+        or 0
+    )
+    pending_refund_total = int(
+        db.scalar(
+            select(func.coalesce(func.sum(Refund.amount), 0))
+            .join(Order, Refund.order_id == Order.id)
+            .where(
+                *revenue_scope,
+                Refund.status.in_(PENDING_REFUND_STATUSES),
+            )
+        )
+        or 0
+    )
+    refund_count = int(
+        db.scalar(
+            select(func.count(Refund.id))
+            .join(Order, Refund.order_id == Order.id)
+            .where(*revenue_scope)
+        )
+        or 0
+    )
+    returns_total = int(
+        db.scalar(select(func.count(ReturnRequest.id))) or 0
+    )
+    open_returns = int(
+        db.scalar(
+            select(func.count(ReturnRequest.id)).where(
+                ReturnRequest.status.in_(("requested", "approved"))
+            )
+        )
+        or 0
+    )
+    revenue = gross_revenue - refunded_total
     products_total = db.scalar(select(func.count(Product.id))) or 0
     products_active = db.scalar(
         select(func.count(Product.id)).where(Product.is_active.is_(True))
@@ -217,4 +271,10 @@ def get_stats(db: Session) -> AdminOrderStatsOut:
         cancelled_orders=status_counts.get("cancelled", 0),
         open_orders=open_orders,
         revenue=revenue,
+        gross_revenue=gross_revenue,
+        refunded_total=refunded_total,
+        pending_refund_total=pending_refund_total,
+        refund_count=refund_count,
+        open_returns=open_returns,
+        returns_total=returns_total,
     )
