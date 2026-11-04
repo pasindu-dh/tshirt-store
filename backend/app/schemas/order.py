@@ -1,7 +1,15 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 
 class OrderCreate(BaseModel):
@@ -75,6 +83,91 @@ class OrderStatusUpdate(BaseModel):
     ]
 
     model_config = ConfigDict(extra="forbid")
+
+
+class OrderDetailsUpdate(BaseModel):
+    contact_name: str | None = Field(
+        default=None, min_length=2, max_length=120
+    )
+    contact_email: EmailStr | None = None
+    phone: str | None = Field(
+        default=None, min_length=5, max_length=30
+    )
+    address_line1: str | None = Field(
+        default=None, min_length=3, max_length=200
+    )
+    address_line2: str | None = Field(
+        default=None, max_length=200
+    )
+    city: str | None = Field(
+        default=None, min_length=2, max_length=100
+    )
+    postal_code: str | None = Field(
+        default=None, max_length=20
+    )
+    country: str | None = Field(
+        default=None, min_length=2, max_length=100
+    )
+    notes: str | None = Field(default=None, max_length=500)
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator(
+        "contact_name",
+        "phone",
+        "address_line1",
+        "city",
+        "country",
+    )
+    @classmethod
+    def strip_required(
+        cls, value: str | None, info: ValidationInfo
+    ) -> str | None:
+        if value is None:
+            return value
+
+        stripped = value.strip()
+        minimums = {
+            "contact_name": 2,
+            "phone": 5,
+            "address_line1": 3,
+            "city": 2,
+            "country": 2,
+        }
+
+        if len(stripped) < minimums[info.field_name]:
+            raise ValueError(
+                f"{info.field_name} cannot be blank or too short"
+            )
+
+        return stripped
+
+    @field_validator("address_line2", "postal_code", "notes")
+    @classmethod
+    def strip_optional(cls, value: str | None) -> str | None:
+        return value.strip() if value is not None else value
+
+    @model_validator(mode="after")
+    def require_changes(self):
+        if not self.model_fields_set:
+            raise ValueError(
+                "Provide at least one field to update"
+            )
+
+        for field in self.model_fields_set:
+            if getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+
+        return self
+
+
+class OrderAuditEventOut(BaseModel):
+    id: int
+    order_id: int
+    actor_user_id: int | None
+    action: str
+    changes: dict
+    created_at: datetime
 
 
 class AdminOrderStatsOut(BaseModel):

@@ -4,6 +4,7 @@ from app.models.coupon import Coupon
 from app.models.inventory import StockMovement
 from app.models.notification import AdminNotification
 from app.models.order import Order, OrderItem
+from app.models.order_audit import OrderAuditEvent
 from app.models.payment import Payment, PaymentEvent, Refund
 from app.models.product import Product, ProductImage, ProductVariant
 from app.models.review import Review
@@ -18,6 +19,7 @@ __all__ = [
     "Coupon",
     "Order",
     "OrderItem",
+    "OrderAuditEvent",
     "Payment",
     "PaymentEvent",
     "Refund",

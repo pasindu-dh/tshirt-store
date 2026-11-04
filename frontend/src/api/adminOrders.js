@@ -16,6 +16,24 @@ export async function getAdminOrder(orderId) {
   return data;
 }
 
+export async function updateAdminOrderDetails(
+  orderId,
+  payload
+) {
+  const { data } = await client.patch(
+    `/admin/orders/${orderId}`,
+    payload
+  );
+  return data;
+}
+
+export async function getAdminOrderAudit(orderId) {
+  const { data } = await client.get(
+    `/admin/orders/${orderId}/audit`
+  );
+  return data;
+}
+
 export async function getAdminOrderPayments(orderId) {
   const { data } = await client.get(
     `/admin/orders/${orderId}/payments`

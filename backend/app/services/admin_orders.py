@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime, time, timedelta
 
 from fastapi import HTTPException, status
@@ -7,14 +8,20 @@ from sqlalchemy.orm import Session, selectinload
 from app.models import (
     Category,
     Order,
+    OrderAuditEvent,
     Payment,
     Product,
     ProductVariant,
     Refund,
     ReturnRequest,
+    User,
 )
 from app.models.common import utcnow
-from app.schemas.order import AdminOrderStatsOut, OrderStatusUpdate
+from app.schemas.order import (
+    AdminOrderStatsOut,
+    OrderDetailsUpdate,
+    OrderStatusUpdate,
+)
 from app.services.payment_events import record_event
 from app.services.reporting import (
     PENDING_REFUND_STATUSES,
@@ -29,6 +36,8 @@ ALLOWED_TRANSITIONS = {
     "delivered": set(),
     "cancelled": set(),
 }
+
+EDITABLE_ORDER_STATUSES = {"pending", "confirmed"}
 
 
 def list_orders(
@@ -97,6 +106,87 @@ def get_order(db: Session, order_id: int) -> Order | None:
         select(Order)
         .where(Order.id == order_id)
         .options(selectinload(Order.items))
+    )
+
+
+def edit_order_details(
+    db: Session,
+    admin_user: User,
+    order: Order,
+    payload: OrderDetailsUpdate,
+) -> Order:
+    if order.status not in EDITABLE_ORDER_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Customer and shipping details can only be edited "
+                "before the order is shipped."
+            ),
+        )
+
+    changes: dict[str, dict] = {}
+    data = payload.model_dump(exclude_unset=True)
+
+    for field, value in data.items():
+        new_value = (
+            value.strip() if isinstance(value, str) else value
+        )
+
+        if field == "contact_email":
+            new_value = str(new_value).strip().lower()
+
+        current_value = getattr(order, field)
+
+        if new_value == current_value:
+            continue
+
+        changes[field] = {
+            "from": current_value,
+            "to": new_value,
+        }
+        setattr(order, field, new_value)
+
+    if changes:
+        db.add(
+            OrderAuditEvent(
+                order_id=order.id,
+                actor_user_id=admin_user.id,
+                action="details_edited",
+                changes=json.dumps(
+                    changes, ensure_ascii=False
+                ),
+            )
+        )
+
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+
+    updated = get_order(db, order.id)
+
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Order could not be loaded after update",
+        )
+
+    return updated
+
+
+def list_order_audit(
+    db: Session, order_id: int
+) -> list[OrderAuditEvent]:
+    return list(
+        db.scalars(
+            select(OrderAuditEvent)
+            .where(OrderAuditEvent.order_id == order_id)
+            .order_by(
+                OrderAuditEvent.created_at.desc(),
+                OrderAuditEvent.id.desc(),
+            )
+        ).all()
     )
 
 

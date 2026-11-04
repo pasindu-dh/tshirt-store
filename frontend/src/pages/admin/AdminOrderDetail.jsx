@@ -4,15 +4,18 @@ import { imageUrl } from "../../api/client";
 import {
   createAdminRefund,
   getAdminOrder,
+  getAdminOrderAudit,
   getAdminOrderPayments,
   getAdminOrderReturns,
   linkAdminReturnRefund,
   reconcileAdminPayment,
   reconcileAdminPaymentWithProvider,
   reviewAdminOrderReturn,
+  updateAdminOrderDetails,
   updateAdminOrderStatus,
   updateAdminRefund,
 } from "../../api/adminOrders";
+import OrderEditForm from "../../components/admin/OrderEditForm";
 import OrderStatusBadge from "../../components/OrderStatusBadge";
 import { getApiError } from "../../utils/errors";
 import { RETURN_REASON_LABELS } from "../../utils/returns";
@@ -69,6 +72,18 @@ const RETURN_STATUS_CLASSES = {
   cancelled: "text-red-400",
 };
 
+const ORDER_FIELD_LABELS = {
+  contact_name: "Contact name",
+  contact_email: "Contact email",
+  phone: "Phone",
+  address_line1: "Address line 1",
+  address_line2: "Address line 2",
+  city: "City",
+  postal_code: "Postal code",
+  country: "Country",
+  notes: "Internal notes",
+};
+
 function formatDate(value) {
   return new Date(value).toLocaleDateString(undefined, {
     year: "numeric",
@@ -116,6 +131,13 @@ function AdminOrderDetail({ orderId }) {
   const [returnActionId, setReturnActionId] = useState(null);
   const [linkRefundId, setLinkRefundId] = useState("");
   const [returnMessage, setReturnMessage] = useState("");
+  const [audit, setAudit] = useState([]);
+  const [auditLoading, setAuditLoading] = useState(true);
+  const [auditError, setAuditError] = useState("");
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [detailsSaving, setDetailsSaving] = useState(false);
+  const [detailsError, setDetailsError] = useState("");
+  const [detailsMessage, setDetailsMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -208,6 +230,32 @@ function AdminOrderDetail({ orderId }) {
     };
   }, [orderId]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    getAdminOrderAudit(orderId)
+      .then((data) => {
+        if (!cancelled) setAudit(data);
+      })
+      .catch((requestError) => {
+        if (!cancelled) {
+          setAuditError(
+            getApiError(
+              requestError,
+              "Could not load the order audit history."
+            )
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAuditLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId]);
+
   const refreshPayments = async () => {
     const data = await getAdminOrderPayments(orderId);
     setPayments(data);
@@ -289,6 +337,40 @@ function AdminOrderDetail({ orderId }) {
           "Could not link the refund."
         )
       );
+    }
+  };
+
+  const handleSaveDetails = async (payload) => {
+    setDetailsSaving(true);
+    setDetailsError("");
+    setDetailsMessage("");
+
+    try {
+      const updated = await updateAdminOrderDetails(
+        orderId,
+        payload
+      );
+      setOrder(updated);
+      setEditingDetails(false);
+      setDetailsMessage("Order details updated.");
+
+      try {
+        setAudit(await getAdminOrderAudit(orderId));
+        setAuditError("");
+      } catch {
+        setAuditError(
+          "Could not refresh the order audit history."
+        );
+      }
+    } catch (requestError) {
+      setDetailsError(
+        getApiError(
+          requestError,
+          "Could not update the order details."
+        )
+      );
+    } finally {
+      setDetailsSaving(false);
     }
   };
 
@@ -519,6 +601,9 @@ function AdminOrderDetail({ orderId }) {
     (action) =>
       !(action.status === "delivered" && onlinePaymentUnpaid)
   );
+  const canEditDetails = ["pending", "confirmed"].includes(
+    order.status
+  );
   const paymentTone =
     order.payment_status === "paid"
       ? "text-green-400"
@@ -657,6 +742,42 @@ function AdminOrderDetail({ orderId }) {
               <p className="text-sm text-gray-400">
                 This order is {order.status}. No further actions are
                 available.
+              </p>
+            )}
+
+            {canEditDetails && (
+              <div className="mt-4 border-t border-gray-800 pt-4">
+                {!editingDetails ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingDetails(true);
+                      setDetailsError("");
+                      setDetailsMessage("");
+                    }}
+                    className="w-full border border-cyan-500/50 text-cyan-400 py-2 rounded-lg font-semibold hover:bg-cyan-500/10 transition"
+                  >
+                    Edit order details
+                  </button>
+                ) : (
+                  <OrderEditForm
+                    key={order.id}
+                    order={order}
+                    onSave={handleSaveDetails}
+                    onCancel={() => {
+                      setEditingDetails(false);
+                      setDetailsError("");
+                    }}
+                    saving={detailsSaving}
+                    error={detailsError}
+                  />
+                )}
+              </div>
+            )}
+
+            {detailsMessage && (
+              <p className="text-sm text-green-400 mt-3">
+                {detailsMessage}
               </p>
             )}
 
@@ -1333,6 +1454,76 @@ function AdminOrderDetail({ orderId }) {
               <p className="text-sm text-green-400 mt-3">
                 {returnMessage}
               </p>
+            )}
+          </section>
+
+          <section className="bg-[#020617] border border-gray-800 rounded-2xl p-6">
+            <h3 className="text-lg font-semibold mb-3">
+              Edit history
+            </h3>
+
+            {auditLoading ? (
+              <p className="text-sm text-gray-400">
+                Loading edit history...
+              </p>
+            ) : auditError ? (
+              <p className="text-sm text-red-400">
+                {auditError}
+              </p>
+            ) : audit.length === 0 ? (
+              <p className="text-sm text-gray-400">
+                No customer or shipping edits recorded.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {audit.map((event) => (
+                  <div
+                    key={event.id}
+                    className="border border-gray-800 rounded-xl p-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm font-medium">
+                        {event.action === "details_edited"
+                          ? "Details edited"
+                          : event.action}
+                      </p>
+                      <p className="text-xs text-gray-500 shrink-0">
+                        {formatDate(event.created_at)}
+                      </p>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {event.actor_user_id
+                        ? `Admin #${event.actor_user_id}`
+                        : "System"}
+                    </p>
+
+                    {Object.entries(event.changes ?? {})
+                      .length > 0 && (
+                      <ul className="mt-2 space-y-1 text-xs text-gray-400">
+                        {Object.entries(event.changes).map(
+                          ([field, change]) => (
+                            <li
+                              key={field}
+                              className="break-words"
+                            >
+                              <span className="text-gray-300">
+                                {ORDER_FIELD_LABELS[field] ??
+                                  field}
+                              </span>
+                              :{" "}
+                              <span className="text-gray-500">
+                                {change.from || "—"}
+                              </span>{" "}
+                              →{" "}
+                              <span>{change.to || "—"}</span>
+                            </li>
+                          )
+                        )}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
           </section>
         </div>

@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from typing import Literal
 
@@ -16,7 +17,12 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import require_admin
 from app.models import Payment, Refund, User
-from app.schemas.order import OrderOut, OrderStatusUpdate
+from app.schemas.order import (
+    OrderAuditEventOut,
+    OrderDetailsUpdate,
+    OrderOut,
+    OrderStatusUpdate,
+)
 from app.schemas.payment import (
     AdminPaymentOut,
     ManualReconciliationRequest,
@@ -91,6 +97,72 @@ def get_order(order_id: int, db: Session = Depends(get_db)):
         )
 
     return order
+
+
+@router.patch("/{order_id}", response_model=OrderOut)
+def edit_order(
+    order_id: int,
+    payload: OrderDetailsUpdate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    order = admin_orders.get_order(db, order_id)
+
+    if order is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Order not found",
+        )
+
+    try:
+        return admin_orders.edit_order_details(
+            db, current_user, order, payload
+        )
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.get(
+    "/{order_id}/audit",
+    response_model=list[OrderAuditEventOut],
+)
+def get_order_audit(
+    order_id: int,
+    db: Session = Depends(get_db),
+):
+    order = admin_orders.get_order(db, order_id)
+
+    if order is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Order not found",
+        )
+
+    events = admin_orders.list_order_audit(db, order.id)
+    results = []
+
+    for event in events:
+        try:
+            changes = json.loads(event.changes or "{}")
+        except json.JSONDecodeError:
+            changes = {}
+
+        results.append(
+            OrderAuditEventOut(
+                id=event.id,
+                order_id=event.order_id,
+                actor_user_id=event.actor_user_id,
+                action=event.action,
+                changes=changes,
+                created_at=event.created_at,
+            )
+        )
+
+    return results
 
 
 @router.get(
