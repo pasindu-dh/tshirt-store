@@ -23,6 +23,9 @@ class OrderCreate(BaseModel):
     notes: str = Field(default="", max_length=500)
     payment_method: Literal["cod", "online"] = "cod"
     coupon_code: str = Field(default="", max_length=40)
+    shipping_method_id: int | None = Field(
+        default=None, ge=1
+    )
 
     model_config = ConfigDict(extra="forbid")
 
@@ -50,6 +53,8 @@ class OrderOut(BaseModel):
     payment_method: str
     payment_status: str
     subtotal: int
+    shipping_method_id: int | None = None
+    shipping_method_name: str = ""
     shipping_fee: int
     discount_code: str
     discount_amount: int

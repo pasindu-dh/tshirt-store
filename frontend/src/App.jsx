@@ -51,6 +51,9 @@ const AdminRefunds = lazy(
 );
 const AdminReports = lazy(() => import("./pages/admin/AdminReports"));
 const AdminReturns = lazy(() => import("./pages/admin/AdminReturns"));
+const AdminShippingMethods = lazy(
+  () => import("./pages/admin/AdminShippingMethods")
+);
 const AdminProductForm = lazy(
   () => import("./pages/admin/AdminProductForm")
 );
@@ -182,6 +185,10 @@ function App() {
                 />
                 <Route path="categories" element={<AdminCategories />} />
                 <Route path="coupons" element={<AdminCoupons />} />
+                <Route
+                  path="shipping-methods"
+                  element={<AdminShippingMethods />}
+                />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

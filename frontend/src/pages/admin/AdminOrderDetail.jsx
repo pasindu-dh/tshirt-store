@@ -694,7 +694,12 @@ function AdminOrderDetail({ orderId }) {
                 </div>
               )}
               <div className="flex justify-between text-gray-300">
-                <span>Shipping</span>
+                <span>
+                  Shipping
+                  {order.shipping_method_name
+                    ? ` (${order.shipping_method_name})`
+                    : ""}
+                </span>
                 <span>LKR {order.shipping_fee}</span>
               </div>
               <div className="flex justify-between text-lg font-semibold pt-2">

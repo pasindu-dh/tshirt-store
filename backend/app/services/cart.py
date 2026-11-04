@@ -2,9 +2,9 @@ from fastapi import HTTPException, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.config import settings
 from app.models import CartItem, Product, ProductVariant
 from app.schemas.cart import CartItemOut, CartMergeRequest, CartOut
+from app.services import shipping as shipping_service
 
 
 def _cart_query(user_id: int):
@@ -46,7 +46,9 @@ def get_cart(db: Session, user_id: int) -> CartOut:
     items = db.scalars(_cart_query(user_id)).all()
     out_items = [_to_out(item) for item in items]
     subtotal = sum(item.line_total for item in out_items)
-    shipping_fee = settings.shipping_fee_lkr if out_items else 0
+    shipping_fee = (
+        shipping_service.default_fee(db) if out_items else 0
+    )
 
     return CartOut(
         items=out_items,

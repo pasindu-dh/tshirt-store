@@ -24,6 +24,7 @@ from app.routers import (
     admin_refunds,
     admin_reports,
     admin_returns,
+    admin_shipping,
     admin_stats,
     auth,
     cart,
@@ -36,6 +37,7 @@ from app.routers import (
     return_policy,
     returns,
     reviews,
+    shipping_methods,
     uploads,
     wishlist,
 )
@@ -178,6 +180,7 @@ app.include_router(cart.router)
 app.include_router(orders.router)
 app.include_router(returns.router)
 app.include_router(return_policy.router)
+app.include_router(shipping_methods.router)
 app.include_router(payments.router)
 app.include_router(reviews.router)
 app.include_router(wishlist.router)
@@ -191,6 +194,7 @@ app.include_router(admin_inventory.router)
 app.include_router(admin_customers.router)
 app.include_router(admin_notifications.router)
 app.include_router(admin_refunds.router)
+app.include_router(admin_shipping.router)
 app.include_router(admin_exports.router)
 app.include_router(health.router)
 app.include_router(admin_stats.router)

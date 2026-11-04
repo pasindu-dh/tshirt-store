@@ -86,7 +86,7 @@ The image includes a `HEALTHCHECK` against `/health/ready`.
 | `JWT_SECRET` | Long random value, for example `python -c "import secrets; print(secrets.token_urlsafe(64))"` |
 | `FRONTEND_ORIGINS` | Comma-separated production frontend origins, no trailing slash |
 | `UPLOADS_DIR` | Directory on a persistent disk, for example `/var/data/uploads` |
-| `SHIPPING_FEE_LKR` | Optional checkout shipping fee |
+| `SHIPPING_FEE_LKR` | Fallback flat checkout shipping fee when no active shipping method is configured |
 | `RETURN_WINDOW_DAYS` | Days after delivery in which customers can request a return (default 30); `0` disables the deadline |
 | `RETURN_POLICY_TEXT` | Customer-facing return-condition text returned by `/returns/policy` |
 | `ONLINE_PAYMENT_RESERVATION_MINUTES` | Unpaid online order stock reservation window; `0` disables expiry |
@@ -205,7 +205,7 @@ The online-payment step requires `PAYMENT_PROVIDER=mock` and
 `PAYMENT_MOCK_ENABLED=true` on the disposable backend. The admin smoke test
 checks `/health/ready` and loads the dashboard, orders, customers,
 notifications, returns, refunds, reports, product-performance, inventory, and
-catalog-import pages.
+catalog-import and shipping-method pages.
 
 If a Vite dev server is not already running, the Playwright config starts one
 on port 5173 using the default API URL. Set `E2E_API_URL` and `E2E_BASE_URL` to

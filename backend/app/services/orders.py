@@ -16,6 +16,7 @@ from app.models import (
 from app.models.common import utcnow
 from app.schemas.order import OrderCreate
 from app.services import coupons as coupon_service
+from app.services import shipping as shipping_service
 from app.services.inventory import record_stock_movement
 from app.services.notifications import (
     create_notification,
@@ -123,7 +124,32 @@ def create_order(
             coupon, subtotal
         )
 
-    shipping_fee = settings.shipping_fee_lkr
+    if payload.shipping_method_id is not None:
+        shipping_method = shipping_service.get_active_method(
+            db, payload.shipping_method_id
+        )
+
+        if shipping_method is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "The selected shipping method is not "
+                    "available."
+                ),
+            )
+    else:
+        shipping_method = shipping_service.get_default_method(db)
+
+    shipping_fee = (
+        shipping_method.fee_lkr
+        if shipping_method is not None
+        else settings.shipping_fee_lkr
+    )
+    shipping_method_name = (
+        shipping_method.name
+        if shipping_method is not None
+        else "Standard Delivery"
+    )
     total = subtotal - discount_amount + shipping_fee
     reservation_expires_at = None
 
@@ -141,6 +167,12 @@ def create_order(
         payment_method=payload.payment_method,
         payment_status="pending",
         subtotal=subtotal,
+        shipping_method_id=(
+            shipping_method.id
+            if shipping_method is not None
+            else None
+        ),
+        shipping_method_name=shipping_method_name,
         shipping_fee=shipping_fee,
         discount_code=coupon.code if coupon is not None else "",
         discount_amount=discount_amount,

@@ -9,6 +9,7 @@ from app.models.payment import Payment, PaymentEvent, Refund
 from app.models.product import Product, ProductImage, ProductVariant
 from app.models.review import Review
 from app.models.return_request import ReturnItem, ReturnRequest
+from app.models.shipping import ShippingMethod
 from app.models.user import User
 from app.models.wishlist import WishlistItem
 
@@ -25,6 +26,7 @@ __all__ = [
     "Refund",
     "ReturnRequest",
     "ReturnItem",
+    "ShippingMethod",
     "StockMovement",
     "Product",
     "ProductImage",

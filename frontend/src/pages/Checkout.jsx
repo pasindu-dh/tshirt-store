@@ -9,6 +9,7 @@ import {
   getPaymentConfig,
   submitPayHereCheckout,
 } from "../api/payments";
+import { getShippingMethods } from "../api/shipping";
 import useAuth from "../hooks/useAuth";
 import useCart from "../hooks/useCart";
 import { getApiError } from "../utils/errors";
@@ -19,7 +20,6 @@ function Checkout() {
     cart,
     cartTotal,
     shippingFee,
-    grandTotal,
     cartLoading,
     clearCart,
   } = useCart();
@@ -47,6 +47,13 @@ function Checkout() {
     online_enabled: false,
     currency: "LKR",
   });
+  const [shippingMethods, setShippingMethods] = useState([]);
+  const [selectedShippingMethodId, setSelectedShippingMethodId] =
+    useState("");
+  const [shippingMethodsLoading, setShippingMethodsLoading] =
+    useState(true);
+  const [shippingMethodsError, setShippingMethodsError] =
+    useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -57,6 +64,40 @@ function Checkout() {
       })
       .catch(() => {
         // Cash on Delivery remains available if configuration fails.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getShippingMethods()
+      .then((methods) => {
+        if (cancelled) return;
+
+        setShippingMethods(methods);
+
+        if (methods.length > 0) {
+          setSelectedShippingMethodId(
+            String(methods[0].id)
+          );
+        }
+      })
+      .catch((requestError) => {
+        if (!cancelled) {
+          setShippingMethodsError(
+            getApiError(
+              requestError,
+              "Could not load delivery options. Standard delivery will be used."
+            )
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setShippingMethodsLoading(false);
       });
 
     return () => {
@@ -105,10 +146,20 @@ function Checkout() {
     setSubmitting(true);
 
     try {
-      const order = await createOrder({
+      const selectedMethod = shippingMethods.find(
+        (method) =>
+          String(method.id) === selectedShippingMethodId
+      );
+      const payload = {
         ...form,
         coupon_code: coupon?.code ?? "",
-      });
+      };
+
+      if (selectedMethod) {
+        payload.shipping_method_id = selectedMethod.id;
+      }
+
+      const order = await createOrder(payload);
 
       try {
         await clearCart();
@@ -185,10 +236,18 @@ function Checkout() {
   const inputClass =
     "mt-1 w-full p-3 rounded-lg bg-black border border-gray-700 outline-none focus:border-cyan-400";
   const labelClass = "block";
+  const selectedShippingMethod =
+    shippingMethods.find(
+      (method) =>
+        String(method.id) === selectedShippingMethodId
+    ) ?? null;
   const summarySubtotal = coupon?.subtotal ?? cartTotal;
-  const summaryShipping = coupon?.shipping_fee ?? shippingFee;
-  const summaryTotal = coupon?.total ?? grandTotal;
   const discountAmount = coupon?.discount_amount ?? 0;
+  const summaryShipping = selectedShippingMethod
+    ? selectedShippingMethod.fee_lkr
+    : coupon?.shipping_fee ?? shippingFee;
+  const summaryTotal =
+    summarySubtotal - discountAmount + summaryShipping;
 
   return (
     <div className="min-h-screen px-6 md:px-10 pb-20 pt-10">
@@ -324,6 +383,78 @@ function Checkout() {
                   className={inputClass}
                 />
               </label>
+            </section>
+
+            <section className="bg-[#020617] border border-gray-800 rounded-2xl p-6 space-y-4">
+              <h2 className="text-lg font-semibold">
+                Delivery method
+              </h2>
+
+              {shippingMethodsLoading ? (
+                <p className="text-sm text-gray-400">
+                  Loading delivery options...
+                </p>
+              ) : shippingMethods.length === 0 ? (
+                <div className="flex items-center justify-between gap-3 bg-black border border-gray-700 rounded-xl p-4">
+                  <span className="text-sm">
+                    Standard delivery
+                  </span>
+                  <span className="text-sm text-cyan-400">
+                    LKR {shippingFee}
+                  </span>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {shippingMethods.map((method) => (
+                    <label
+                      key={method.id}
+                      className={`flex items-start justify-between gap-3 bg-black border rounded-xl p-4 cursor-pointer ${
+                        String(method.id) ===
+                        selectedShippingMethodId
+                          ? "border-cyan-500/60"
+                          : "border-gray-700"
+                      }`}
+                    >
+                      <span className="flex items-start gap-3">
+                        <input
+                          type="radio"
+                          name="shipping_method"
+                          value={method.id}
+                          checked={
+                            String(method.id) ===
+                            selectedShippingMethodId
+                          }
+                          onChange={() =>
+                            setSelectedShippingMethodId(
+                              String(method.id)
+                            )
+                          }
+                          className="mt-1 accent-cyan-400"
+                        />
+                        <span>
+                          <span className="block font-medium">
+                            {method.name}
+                          </span>
+                          {method.description && (
+                            <span className="block text-sm text-gray-400 mt-1">
+                              {method.description}
+                            </span>
+                          )}
+                        </span>
+                      </span>
+                      <span className="text-sm text-cyan-400 shrink-0">
+                        LKR {method.fee_lkr}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {shippingMethodsError && (
+                <p className="text-xs text-yellow-400">
+                  {shippingMethodsError}
+                </p>
+              )}
             </section>
 
             <section className="bg-[#020617] border border-gray-800 rounded-2xl p-6 space-y-4">
@@ -504,7 +635,12 @@ function Checkout() {
             )}
 
             <div className="flex justify-between text-sm text-gray-300">
-              <span>Shipping</span>
+              <span>
+                Shipping
+                {selectedShippingMethod
+                  ? ` (${selectedShippingMethod.name})`
+                  : ""}
+              </span>
               <span>LKR {summaryShipping}</span>
             </div>
 

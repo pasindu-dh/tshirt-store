@@ -23,6 +23,14 @@ class Order(Base):
         String(30), default="pending"
     )
     subtotal: Mapped[int] = mapped_column(Integer)
+    shipping_method_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("shipping_methods.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    shipping_method_name: Mapped[str] = mapped_column(
+        String(120), default="", server_default=""
+    )
     shipping_fee: Mapped[int] = mapped_column(Integer, default=0)
     discount_code: Mapped[str] = mapped_column(
         String(40), default="", server_default=""
