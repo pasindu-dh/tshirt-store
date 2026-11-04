@@ -23,6 +23,25 @@ describe("getApiError", () => {
     ).toBe("Email is invalid Password is too short");
   });
 
+  it("explains when the API cannot be reached", () => {
+    expect(
+      getApiError(
+        { request: {}, code: "ERR_NETWORK" },
+        "Unable to sign in."
+      )
+    ).toBe(
+      "Cannot reach the server. Check that the backend is running and try again."
+    );
+  });
+
+  it("explains a request timeout", () => {
+    expect(
+      getApiError({ request: {}, code: "ECONNABORTED" })
+    ).toBe(
+      "The server took too long to respond. Please try again."
+    );
+  });
+
   it("uses the fallback for unknown errors", () => {
     expect(getApiError(new Error("network"))).toBe(
       "Something went wrong. Please try again."

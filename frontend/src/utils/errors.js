@@ -18,5 +18,16 @@ export function getApiError(
     }
   }
 
+  if (error?.code === "ECONNABORTED") {
+    return "The server took too long to respond. Please try again.";
+  }
+
+  if (
+    error?.code === "ERR_NETWORK" ||
+    (!error?.response && Boolean(error?.request))
+  ) {
+    return "Cannot reach the server. Check that the backend is running and try again.";
+  }
+
   return fallback;
 }
