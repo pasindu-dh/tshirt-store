@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { getAdminCustomers } from "../../api/adminCustomers";
+import { downloadCustomersCsv } from "../../api/adminExports";
+import ExportCsvButton from "../../components/admin/ExportCsvButton";
 import { getApiError } from "../../utils/errors";
 
 const PAGE_SIZE = 10;
@@ -96,11 +98,22 @@ function AdminCustomers() {
 
   return (
     <div>
-      <div>
-        <h2 className="text-2xl font-bold">Customers</h2>
-        <p className="text-gray-400 text-sm mt-1">
-          {total} customer{total === 1 ? "" : "s"} found
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Customers</h2>
+          <p className="text-gray-400 text-sm mt-1">
+            {total} customer{total === 1 ? "" : "s"} found
+          </p>
+        </div>
+
+        <ExportCsvButton
+          label="Export customers CSV"
+          onExport={() =>
+            downloadCustomersCsv({
+              search: appliedSearch || undefined,
+            })
+          }
+        />
       </div>
 
       <input

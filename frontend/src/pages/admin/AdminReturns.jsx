@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  downloadRefundsCsv,
+  downloadReturnsCsv,
+} from "../../api/adminExports";
 import { getAdminReturns } from "../../api/adminOrders";
+import ExportCsvButton from "../../components/admin/ExportCsvButton";
 import { getApiError } from "../../utils/errors";
 
 const PAGE_SIZE = 10;
@@ -117,11 +122,29 @@ function AdminReturns() {
 
   return (
     <div>
-      <div>
-        <h2 className="text-2xl font-bold">Returns</h2>
-        <p className="text-gray-400 text-sm mt-1">
-          {total} return request{total === 1 ? "" : "s"} found
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Returns</h2>
+          <p className="text-gray-400 text-sm mt-1">
+            {total} return request{total === 1 ? "" : "s"} found
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <ExportCsvButton
+            label="Export returns CSV"
+            onExport={() =>
+              downloadReturnsCsv({
+                status: statusFilter || undefined,
+                search: appliedSearch || undefined,
+              })
+            }
+          />
+          <ExportCsvButton
+            label="Export refunds CSV"
+            onExport={() => downloadRefundsCsv()}
+          />
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mt-6">

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { downloadStockMovementsCsv } from "../../api/adminExports";
 import {
   adjustStock,
   getLowStock,
   getStockMovements,
 } from "../../api/adminInventory";
+import ExportCsvButton from "../../components/admin/ExportCsvButton";
 import { getApiError } from "../../utils/errors";
 
 const MOVEMENT_PAGE_SIZE = 20;
@@ -440,10 +442,23 @@ function AdminInventory() {
               adjustments.
             </p>
           </div>
-          <span className="text-sm text-gray-400">
-            {movementTotal} movement
-            {movementTotal === 1 ? "" : "s"}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-400">
+              {movementTotal} movement
+              {movementTotal === 1 ? "" : "s"}
+            </span>
+            <ExportCsvButton
+              label="Export movements CSV"
+              onExport={() =>
+                downloadStockMovementsCsv({
+                  movement_type: movementType || undefined,
+                  search: appliedMovementSearch || undefined,
+                  date_from: dateFrom || undefined,
+                  date_to: dateTo || undefined,
+                })
+              }
+            />
+          </div>
         </div>
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">

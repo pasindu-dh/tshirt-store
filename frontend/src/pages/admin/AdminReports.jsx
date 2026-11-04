@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { downloadFinancialCsv } from "../../api/adminExports";
 import { getAdminFinancialReport } from "../../api/adminOrders";
+import ExportCsvButton from "../../components/admin/ExportCsvButton";
 import { getApiError } from "../../utils/errors";
 
 function formatMoney(value) {
@@ -364,6 +366,16 @@ function AdminReports() {
             >
               Product performance
             </Link>
+            <ExportCsvButton
+              label="Export periods CSV"
+              onExport={() =>
+                downloadFinancialCsv({
+                  date_from: filters.dateFrom || undefined,
+                  date_to: filters.dateTo || undefined,
+                  group_by: filters.groupBy,
+                })
+              }
+            />
           </div>
         </>
       )}

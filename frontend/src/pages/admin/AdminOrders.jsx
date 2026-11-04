@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { downloadOrdersCsv } from "../../api/adminExports";
 import { getAdminOrders } from "../../api/adminOrders";
+import ExportCsvButton from "../../components/admin/ExportCsvButton";
 import OrderStatusBadge from "../../components/OrderStatusBadge";
 import { getApiError } from "../../utils/errors";
 
@@ -123,6 +125,18 @@ function AdminOrders() {
             {total} order{total === 1 ? "" : "s"} found
           </p>
         </div>
+
+        <ExportCsvButton
+          label="Export orders CSV"
+          onExport={() =>
+            downloadOrdersCsv({
+              search: appliedSearch || undefined,
+              status: statusFilter || undefined,
+              date_from: dateFrom || undefined,
+              date_to: dateTo || undefined,
+            })
+          }
+        />
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mt-6">
