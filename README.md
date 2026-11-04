@@ -250,7 +250,7 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 
 Sign in at `/login` with an admin account to manage the store:
 
-- **Dashboard**: gross and net delivered revenue, completed/pending refunds, open returns, order status counts, low-stock variants, product/category totals, and quick actions.
+- **Dashboard**: gross and net delivered revenue, completed/pending refunds, open returns, order status counts, low-stock variants, product/category totals, quick actions, and a sales overview with 7/30/90-day net-revenue and delivered-order charts plus top products.
 - **Customers**: searchable customer directory with joined date, order counts, delivered/cancelled counts, gross/net lifetime spend, completed/pending refunds, return totals, open returns, and last order date. Open a customer to see their orders and return requests; export the filtered directory as CSV.
 - **Orders**: search by order number/customer, filter by status and date range, paginate, open order details, and export line-item CSV with the current filters.
 - **Order detail**: review customer/shipping/payment details, items, totals, discounts, notes, payment attempts, PayHere references, transaction IDs, refunds/returns, return requests, and event history; confirm, ship, deliver, or cancel orders. Online orders cannot be delivered until payment is paid. Admins can verify payments through PayHere, record manual reconciliation, record manual or provider-processed refunds/returns, approve/reject customer return requests, mark approved returns completed to restock the returned items, and link a refund to an approved or completed return.
@@ -309,6 +309,8 @@ npm test          # Vitest + React Testing Library
 npm run lint
 npm run build
 ```
+
+Frontend tests cover cart/error utilities, return-window helpers, sales chart date-series helpers, reusable order-status/CSV-export components, Navbar/ProductCard behavior, and the admin customer/returns/reports/inventory pages.
 
 ### End-to-end
 

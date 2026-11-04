@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { getAdminStats } from "../../api/adminOrders";
+import {
+  getAdminFinancialReport,
+  getAdminProductReport,
+  getAdminStats,
+} from "../../api/adminOrders";
+import SalesOverview from "../../components/admin/SalesOverview";
 import { getApiError } from "../../utils/errors";
+import { dateRangeDays } from "../../utils/sales";
 
 function StatCard({ label, value, hint }) {
   return (
@@ -31,6 +37,11 @@ function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [rangeDays, setRangeDays] = useState(30);
+  const [salesReport, setSalesReport] = useState(null);
+  const [topProducts, setTopProducts] = useState(null);
+  const [salesLoading, setSalesLoading] = useState(true);
+  const [salesError, setSalesError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -58,9 +69,60 @@ function AdminDashboard() {
     };
   }, [refreshKey]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const { dateFrom, dateTo } = dateRangeDays(rangeDays);
+
+    Promise.all([
+      getAdminFinancialReport({
+        date_from: dateFrom,
+        date_to: dateTo,
+        group_by: "day",
+      }),
+      getAdminProductReport({
+        date_from: dateFrom,
+        date_to: dateTo,
+        limit: 5,
+      }),
+    ])
+      .then(([financial, products]) => {
+        if (cancelled) return;
+
+        setSalesReport(financial);
+        setTopProducts(products);
+      })
+      .catch((requestError) => {
+        if (!cancelled) {
+          setSalesError(
+            getApiError(
+              requestError,
+              "Could not load the sales overview."
+            )
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setSalesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [rangeDays, refreshKey]);
+
+  const handleRangeChange = (days) => {
+    setSalesLoading(true);
+    setSalesError("");
+    setSalesReport(null);
+    setTopProducts(null);
+    setRangeDays(days);
+  };
+
   const retry = () => {
     setLoading(true);
     setError("");
+    setSalesLoading(true);
+    setSalesError("");
     setRefreshKey((current) => current + 1);
   };
 
@@ -162,6 +224,15 @@ function AdminDashboard() {
               value={stats?.categories_total}
             />
           </div>
+
+          <SalesOverview
+            report={salesReport}
+            products={topProducts}
+            rangeDays={rangeDays}
+            onRangeChange={handleRangeChange}
+            loading={salesLoading}
+            error={salesError}
+          />
 
           {!loading && !stats && (
             <p className="mt-4 text-xs text-gray-500">
