@@ -120,7 +120,11 @@ jobs:
         working-directory: backend
         run: |
           nohup python -m uvicorn main:app --host 127.0.0.1 --port 8005 > /tmp/backend.log 2>&1 &
-          curl -sS --retry 20 --retry-delay 1 --retry-connrefused http://127.0.0.1:8005/
+          curl -sS --retry 20 --retry-delay 1 --retry-connrefused http://127.0.0.1:8005/health/ready
+
+      - name: Run API smoke checks
+        working-directory: backend
+        run: python -m app.smoke_test --base-url http://127.0.0.1:8005
 
       - name: Start frontend
         working-directory: frontend

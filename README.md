@@ -131,7 +131,7 @@ The frontend runs on Vite and communicates with the FastAPI backend.
    ```
    *The terminal will output the local URL (usually `http://localhost:5173`) where you can view the application.*
 
-   Frontend routes: `/` (home), `/shop`, `/product/:slug`, `/about`, `/contact`, `/login`, `/register`, `/forbidden`, `/checkout` (signed-in), `/orders` and `/orders/:orderId` (signed-in), `/wishlist` (signed-in), and the admin area (`/admin`, `/admin/orders`, `/admin/orders/:orderId`, `/admin/products`, `/admin/products/new`, `/admin/products/:id/edit`, `/admin/categories`, `/admin/coupons`). The admin area requires the `admin` role.
+   Frontend routes: `/` (home), `/shop`, `/product/:slug`, `/about`, `/contact`, `/login`, `/register`, `/forbidden`, `/checkout` (signed-in), `/orders` and `/orders/:orderId` (signed-in), `/wishlist` (signed-in), and the admin area (`/admin`, `/admin/orders`, `/admin/orders/:orderId`, `/admin/customers`, `/admin/customers/:customerId`, `/admin/returns`, `/admin/reports`, `/admin/reports/products`, `/admin/inventory`, `/admin/products`, `/admin/products/new`, `/admin/products/:id/edit`, `/admin/categories`, `/admin/coupons`). The admin area requires the `admin` role.
 
 ## 🔗 API Endpoints
 
@@ -143,7 +143,9 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 - `GET /products/slug/{slug}`: Product detail by slug (active products only), used by the storefront product page.
 - `GET /categories`: List product categories.
 - `GET /images/{filename}`: Serves static images for the T-shirts.
-- `GET /`: Health check endpoint.
+- `GET /`: Basic backend status endpoint.
+- `GET /health/live`: Liveness check; returns `{"status": "ok"}` without touching the database.
+- `GET /health/ready`: Readiness check for the database connection and writable uploads directory; returns `503` and per-check status when unready.
 
 ### Authentication
 - `POST /auth/register`: Create a customer account and return access + refresh tokens.
@@ -271,6 +273,19 @@ Sign in at `/login` with an admin account to manage the store:
 - Unpaid online orders have a configurable reservation window (`ONLINE_PAYMENT_RESERVATION_MINUTES`). Expired orders are cancelled, their reserved stock is released exactly once, and pending payment attempts are closed.
 - After ordering, customers see a confirmation and can review their orders at `/orders`. Order emails distinguish pending online payment from confirmed payment; a separate payment confirmation is sent only after server-side payment verification. After delivery, customers can select items and quantities to return, cancel a pending request, and see approval/rejection, restock, and linked refund status. Refund/return records are admin-managed. When SMTP is configured, return status emails are sent for requested, approved, rejected, completed, and cancelled returns.
 
+## 🩺 Health and launch checks
+
+- `GET /health/live` verifies the API process is serving requests.
+- `GET /health/ready` checks database connectivity and uploads-directory writability; unready responses use HTTP `503`.
+- Production startup rejects a weak/default `JWT_SECRET` and wildcard `FRONTEND_ORIGINS` when `APP_ENV=production`. Mock payments are already rejected in production.
+- The Docker image includes a health check against `/health/ready`.
+- Run the API smoke test against a running backend:
+  ```bash
+  cd backend
+  python -m app.smoke_test --base-url http://127.0.0.1:8005
+  ```
+  It checks liveness, readiness, catalog, payment config, and — when admin credentials are available from `SMOKE_ADMIN_EMAIL`/`SMOKE_ADMIN_PASSWORD` or the backend settings — admin login, identity, and dashboard access. It never prints credentials or tokens. Use `--skip-admin` for public-endpoint-only checks.
+
 ## 🧪 Testing
 
 ### Backend
@@ -283,7 +298,7 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-Coverage includes authentication and role guards, login rate limiting, catalog filters and slug lookup, cart stock caps and guest-cart merging, transactional order creation and stock decrement, coupon previews/discounts/usage rules, admin status transitions and cancellation restock, dashboard stats, reviews, wishlist privacy, upload validation, security headers, CORS, order date filters, mock online payments, PayHere signature/amount verification, chargebacks, duplicate/delayed notifications, stock reservation expiry, fulfillment guards, manual reconciliation, refund/return records, provider reconciliation/refund adapters, item-level customer return requests, quantity validation, cancellation and reapplication, completion restocking without double restock, the global admin return queue, and payment/return email timing. Financial reporting tests cover partial and full refunds, pending refund totals, date-filtered gross/net revenue, day/month grouping, return totals and returned units, dashboard net revenue, and admin-only access. Inventory tests cover stock movements for orders, cancellations, and return restocks; manual adjustments and validation; per-variant thresholds; movement filters and access guards; product deletion snapshots; and variant-ID preservation when editing products. Customer-management tests cover directory filtering, admin/customer access separation, order and return aggregates, lifetime gross/net spend, pending and completed refunds, and customer detail order/return histories. Product-performance tests cover units/revenue aggregation, completed return rates, category rollups, current stock value, date filtering, limits, and admin-only access. CSV export tests cover order line items, customer aggregates, return/refund rows, stock movements, financial periods, filters, headers, download metadata, access guards, and date/status validation.
+Coverage includes authentication and role guards, login rate limiting, catalog filters and slug lookup, cart stock caps and guest-cart merging, transactional order creation and stock decrement, coupon previews/discounts/usage rules, admin status transitions and cancellation restock, dashboard stats, reviews, wishlist privacy, upload validation, security headers, CORS, order date filters, mock online payments, PayHere signature/amount verification, chargebacks, duplicate/delayed notifications, stock reservation expiry, fulfillment guards, manual reconciliation, refund/return records, provider reconciliation/refund adapters, item-level customer return requests, quantity validation, cancellation and reapplication, completion restocking without double restock, the global admin return queue, and payment/return email timing. Financial reporting tests cover partial and full refunds, pending refund totals, date-filtered gross/net revenue, day/month grouping, return totals and returned units, dashboard net revenue, and admin-only access. Inventory tests cover stock movements for orders, cancellations, and return restocks; manual adjustments and validation; per-variant thresholds; movement filters and access guards; product deletion snapshots; and variant-ID preservation when editing products. Customer-management tests cover directory filtering, admin/customer access separation, order and return aggregates, lifetime gross/net spend, pending and completed refunds, and customer detail order/return histories. Product-performance tests cover units/revenue aggregation, completed return rates, category rollups, current stock value, date filtering, limits, and admin-only access. CSV export tests cover order line items, customer aggregates, return/refund rows, stock movements, financial periods, filters, headers, download metadata, access guards, and date/status validation. Health/config tests cover liveness, database/uploads readiness, unready responses, and production JWT/CORS validation.
 
 ### Frontend
 
@@ -296,7 +311,7 @@ npm run build
 
 ### End-to-end
 
-The Playwright test drives a full guest-cart → login → checkout → coupon → online payment → order → review → wishlist → history journey and verifies that the access-token refresh interceptor recovers from an expired token. It needs a running backend with an admin account and the mock payment provider enabled.
+The Playwright suite includes a full guest-cart → login → checkout → coupon → online payment → order → review → wishlist → history journey, plus an admin smoke test that verifies readiness and loads the dashboard, orders, customers, returns, reports, product-performance, and inventory pages. It needs a running backend with an admin account and the mock payment provider enabled.
 
 ```bash
 cd frontend

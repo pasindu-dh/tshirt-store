@@ -8,7 +8,7 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
     app_name: str = "FURZY T-Shirt Store API"
-    app_version: str = "0.9.9"
+    app_version: str = "0.10.0"
     app_env: str = "development"
 
     # Default to an absolute path so the database location never depends on CWD.
@@ -126,6 +126,28 @@ def validate_payment_security(settings: Settings) -> None:
     ):
         raise RuntimeError(
             "Mock online payments cannot be enabled when APP_ENV=production."
+        )
+
+
+def validate_runtime_security(settings: Settings) -> None:
+    """Fail startup for unsafe production authentication/CORS settings."""
+
+    if not settings.is_production:
+        return
+
+    if (
+        len(settings.jwt_secret) < 32
+        or settings.jwt_secret == "dev-secret-change-me"
+    ):
+        raise RuntimeError(
+            "JWT_SECRET must be a strong non-default value when "
+            "APP_ENV=production."
+        )
+
+    if "*" in settings.cors_origins:
+        raise RuntimeError(
+            "FRONTEND_ORIGINS must not contain '*' when "
+            "APP_ENV=production."
         )
 
 

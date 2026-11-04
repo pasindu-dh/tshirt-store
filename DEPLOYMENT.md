@@ -57,13 +57,32 @@ docker run --env-file backend/.env -p 8000:8000 \
 ```
 
 Run `python -m alembic upgrade head` before starting a new release/container.
+The image includes a `HEALTHCHECK` against `/health/ready`.
+
+### Health checks and smoke tests
+
+- `GET /health/live` is a process liveness check with no database access.
+- `GET /health/ready` checks database connectivity and uploads-directory
+  writability. It returns `503` when either check fails.
+- Configure the hosting platform's health check path as `/health/ready`.
+- After deployment, run:
+  ```bash
+  cd backend
+  SMOKE_ADMIN_EMAIL=... SMOKE_ADMIN_PASSWORD=... \
+    python -m app.smoke_test --base-url https://api.example.com
+  ```
+  The smoke test checks liveness, readiness, catalog, payment config, and admin
+  login/identity/dashboard when credentials are available. It never prints
+  credentials or tokens. Use `--skip-admin` for public checks only.
+- `APP_ENV=production` rejects a weak/default `JWT_SECRET` and a wildcard
+  `FRONTEND_ORIGINS` at startup.
 
 ### Required environment variables
 
 | Variable | Notes |
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL URL with `postgresql+psycopg://` |
-| `APP_ENV` | Set to `production` in production; `mock` payment mode is rejected at startup there |
+| `APP_ENV` | Set to `production` in production; mock payments, weak/default JWT secrets, and wildcard CORS origins are rejected at startup there |
 | `JWT_SECRET` | Long random value, for example `python -c "import secrets; print(secrets.token_urlsafe(64))"` |
 | `FRONTEND_ORIGINS` | Comma-separated production frontend origins, no trailing slash |
 | `UPLOADS_DIR` | Directory on a persistent disk, for example `/var/data/uploads` |
@@ -147,7 +166,8 @@ that exact origin and redeploy the API.
 - Backend: installs `requirements-dev.txt` and runs pytest.
 - Frontend: installs with `npm ci`, then lint, Vitest, and production build.
 - End-to-end: creates a disposable SQLite database, seeds an admin, starts the
-  API and Vite, installs Chromium, and runs the Playwright purchase journey.
+  API and Vite, runs the API smoke checks, installs Chromium, and runs the
+  Playwright purchase journey plus the admin-page smoke test.
 
 No production secrets are needed in CI; the workflow uses disposable test
 values.
@@ -176,11 +196,13 @@ npx playwright install chromium   # once
 E2E_DISPOSABLE_DB=1 E2E_ADMIN_EMAIL=... E2E_ADMIN_PASSWORD=... npm run test:e2e
 ```
 
-The test skips itself unless `E2E_DISPOSABLE_DB=1` or `CI=true` is set,
-because it leaves an order and customer account behind. It deletes the product
-and coupon it creates; reviews and wishlist entries are removed with the
-product. The online-payment step requires `PAYMENT_PROVIDER=mock` and
-`PAYMENT_MOCK_ENABLED=true` on the disposable backend.
+The tests skip themselves unless `E2E_DISPOSABLE_DB=1` or `CI=true` is set,
+because they create records. The purchase journey deletes the product and
+coupon it creates; reviews and wishlist entries are removed with the product.
+The online-payment step requires `PAYMENT_PROVIDER=mock` and
+`PAYMENT_MOCK_ENABLED=true` on the disposable backend. The admin smoke test
+checks `/health/ready` and loads the dashboard, orders, customers, returns,
+reports, product-performance, and inventory pages.
 
 If a Vite dev server is not already running, the Playwright config starts one
 on port 5173 using the default API URL. Set `E2E_API_URL` and `E2E_BASE_URL` to
@@ -363,5 +385,8 @@ online payment.
 - [ ] Stock reservation expiry configured and, if the in-process sweeper is disabled, a cron job runs `python -m app.expire_reservations`.
 - [ ] Login rate limiting sized for your traffic or moved to Redis.
 - [ ] Admin account verified with `python -m app.seed_admin` validation rules.
+- [ ] Host health check points to `/health/ready`; the included Docker health check is active if using the image.
+- [ ] `python -m app.smoke_test --base-url https://api.example.com` passes after deployment.
+- [ ] `APP_ENV=production` starts successfully with the final JWT secret and CORS origins, and fails with intentionally weak values.
 - [ ] Dependencies updated and `npm audit` / `pip-audit` reviewed.
 - [ ] `python -m pytest` and `npm test` green before deployment.

@@ -7,7 +7,11 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.config import settings, validate_payment_security
+from app.config import (
+    settings,
+    validate_payment_security,
+    validate_runtime_security,
+)
 from app.database import SessionLocal
 from app.routers import (
     admin,
@@ -23,6 +27,7 @@ from app.routers import (
     cart,
     categories,
     coupons,
+    health,
     orders,
     payments,
     products,
@@ -41,6 +46,7 @@ UPLOADS_DIR = Path(settings.uploads_dir)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 validate_payment_security(settings)
+validate_runtime_security(settings)
 
 if (
     len(settings.jwt_secret) < 32
@@ -180,6 +186,7 @@ app.include_router(admin_reports.router)
 app.include_router(admin_inventory.router)
 app.include_router(admin_customers.router)
 app.include_router(admin_exports.router)
+app.include_router(health.router)
 app.include_router(admin_stats.router)
 app.include_router(uploads.router)
 
