@@ -137,3 +137,10 @@ export async function getAdminFinancialReport(params = {}) {
   });
   return data;
 }
+
+export async function getAdminProductReport(params = {}) {
+  const { data } = await client.get("/admin/reports/products", {
+    params,
+  });
+  return data;
+}

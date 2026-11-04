@@ -358,6 +358,12 @@ function AdminReports() {
             >
               View returns
             </Link>
+            <Link
+              to="/admin/reports/products"
+              className="px-5 py-2 rounded-lg border border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10"
+            >
+              Product performance
+            </Link>
           </div>
         </>
       )}
