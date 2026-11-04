@@ -127,9 +127,36 @@ def _customer_out(
         name=user.name,
         email=user.email,
         role=user.role,
+        is_active=user.is_active,
         created_at=user.created_at,
         **stats.get(user.id, _empty_stats()),
     )
+
+
+def set_customer_active(
+    db: Session,
+    customer_id: int,
+    is_active: bool,
+) -> AdminCustomerOut | None:
+    user = db.scalar(
+        select(User)
+        .where(
+            User.id == customer_id,
+            User.role == "customer",
+        )
+        .with_for_update()
+    )
+
+    if user is None:
+        return None
+
+    if user.is_active != is_active:
+        user.is_active = is_active
+        db.commit()
+        db.refresh(user)
+
+    stats = _stats_for_users(db, [user.id])
+    return _customer_out(user, stats)
 
 
 def list_customers(

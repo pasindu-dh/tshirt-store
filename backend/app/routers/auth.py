@@ -97,6 +97,12 @@ def login(
     login_account_limiter.reset(account_key)
     login_ip_limiter.reset(ip_key)
 
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account has been deactivated.",
+        )
+
     return _auth_response(user)
 
 
@@ -113,7 +119,7 @@ def refresh_tokens(payload: RefreshRequest, db: Session = Depends(get_db)):
 
     user = db.get(User, user_id)
 
-    if user is None:
+    if user is None or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token",

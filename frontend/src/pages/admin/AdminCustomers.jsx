@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { getAdminCustomers } from "../../api/adminCustomers";
+import {
+  getAdminCustomers,
+  setAdminCustomerActive,
+} from "../../api/adminCustomers";
 import { downloadCustomersCsv } from "../../api/adminExports";
 import ExportCsvButton from "../../components/admin/ExportCsvButton";
 import { getApiError } from "../../utils/errors";
@@ -27,6 +30,9 @@ function AdminCustomers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [updatingId, setUpdatingId] = useState(null);
+  const [actionError, setActionError] = useState("");
+  const [message, setMessage] = useState("");
 
   const resetResults = useCallback(() => {
     setPage(1);
@@ -83,6 +89,51 @@ function AdminCustomers() {
     };
   }, [page, appliedSearch, refreshKey]);
 
+  const handleToggleStatus = async (customer) => {
+    const nextActive = !customer.is_active;
+
+    if (
+      !nextActive &&
+      !window.confirm(
+        `Deactivate ${customer.name}? They will be signed out and unable to log in.`
+      )
+    ) {
+      return;
+    }
+
+    setUpdatingId(customer.id);
+    setActionError("");
+    setMessage("");
+
+    try {
+      const updated = await setAdminCustomerActive(
+        customer.id,
+        nextActive
+      );
+      setCustomers((current) =>
+        current.map((item) =>
+          item.id === updated.id
+            ? { ...item, is_active: updated.is_active }
+            : item
+        )
+      );
+      setMessage(
+        `${customer.name} ${
+          nextActive ? "activated" : "deactivated"
+        }.`
+      );
+    } catch (requestError) {
+      setActionError(
+        getApiError(
+          requestError,
+          "Could not update customer status."
+        )
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   const goToPage = (nextPage) => {
     setLoading(true);
     setError("");
@@ -123,6 +174,13 @@ function AdminCustomers() {
         aria-label="Search customers"
         className="mt-6 w-full p-3 rounded-lg bg-[#020617] border border-gray-700 outline-none focus:border-cyan-400"
       />
+
+      {message && (
+        <p className="text-sm text-green-400 mt-3">{message}</p>
+      )}
+      {actionError && (
+        <p className="text-sm text-red-400 mt-3">{actionError}</p>
+      )}
 
       {error ? (
         <div className="mt-10 text-center">
@@ -173,6 +231,17 @@ function AdminCustomers() {
                     <p className="text-xs text-gray-600">
                       Customer #{customer.id}
                     </p>
+                    <p
+                      className={`text-xs mt-1 ${
+                        customer.is_active
+                          ? "text-green-400"
+                          : "text-red-400"
+                      }`}
+                    >
+                      {customer.is_active
+                        ? "Active"
+                        : "Inactive"}
+                    </p>
                   </td>
 
                   <td className="p-4 text-gray-300">
@@ -213,12 +282,32 @@ function AdminCustomers() {
                   </td>
 
                   <td className="p-4 text-right">
-                    <Link
-                      to={`/admin/customers/${customer.id}`}
-                      className="text-cyan-400 hover:text-cyan-300"
-                    >
-                      View
-                    </Link>
+                    <div className="flex items-center justify-end gap-3">
+                      <Link
+                        to={`/admin/customers/${customer.id}`}
+                        className="text-cyan-400 hover:text-cyan-300"
+                      >
+                        View
+                      </Link>
+                      <button
+                        type="button"
+                        disabled={updatingId === customer.id}
+                        onClick={() =>
+                          handleToggleStatus(customer)
+                        }
+                        className={`text-xs font-semibold disabled:opacity-50 ${
+                          customer.is_active
+                            ? "text-red-400 hover:text-red-300"
+                            : "text-green-400 hover:text-green-300"
+                        }`}
+                      >
+                        {updatingId === customer.id
+                          ? "Updating..."
+                          : customer.is_active
+                            ? "Deactivate"
+                            : "Activate"}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

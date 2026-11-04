@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { getAdminCustomer } from "../../api/adminCustomers";
+import {
+  getAdminCustomer,
+  setAdminCustomerActive,
+} from "../../api/adminCustomers";
 import OrderStatusBadge from "../../components/OrderStatusBadge";
 import { getApiError } from "../../utils/errors";
 
@@ -41,6 +44,9 @@ function AdminCustomerDetail({ customerId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notFound, setNotFound] = useState(false);
+  const [statusUpdating, setStatusUpdating] = useState(false);
+  const [statusError, setStatusError] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -106,6 +112,48 @@ function AdminCustomerDetail({ customerId }) {
 
   if (!customer) return null;
 
+  const handleToggleStatus = async () => {
+    const nextActive = !customer.is_active;
+
+    if (
+      !nextActive &&
+      !window.confirm(
+        `Deactivate ${customer.name}? They will be signed out and unable to log in.`
+      )
+    ) {
+      return;
+    }
+
+    setStatusUpdating(true);
+    setStatusError("");
+    setStatusMessage("");
+
+    try {
+      const updated = await setAdminCustomerActive(
+        customer.id,
+        nextActive
+      );
+      setCustomer((current) => ({
+        ...current,
+        is_active: updated.is_active,
+      }));
+      setStatusMessage(
+        nextActive
+          ? "Customer account activated."
+          : "Customer account deactivated."
+      );
+    } catch (requestError) {
+      setStatusError(
+        getApiError(
+          requestError,
+          "Could not update the customer account."
+        )
+      );
+    } finally {
+      setStatusUpdating(false);
+    }
+  };
+
   return (
     <div>
       <Link
@@ -116,7 +164,18 @@ function AdminCustomerDetail({ customerId }) {
       </Link>
 
       <div className="mt-4">
-        <h2 className="text-2xl font-bold">{customer.name}</h2>
+        <div className="flex items-center gap-3 flex-wrap">
+          <h2 className="text-2xl font-bold">{customer.name}</h2>
+          <span
+            className={`text-xs font-semibold ${
+              customer.is_active
+                ? "text-green-400"
+                : "text-red-400"
+            }`}
+          >
+            {customer.is_active ? "Active" : "Inactive"}
+          </span>
+        </div>
         <p className="text-sm text-gray-400 mt-1">
           {customer.email} · Customer #{customer.id}
         </p>
@@ -128,6 +187,35 @@ function AdminCustomerDetail({ customerId }) {
               )}`
             : " · No orders yet"}
         </p>
+
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            disabled={statusUpdating}
+            onClick={handleToggleStatus}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 ${
+              customer.is_active
+                ? "border border-red-500/60 text-red-400 hover:bg-red-500/10"
+                : "bg-cyan-400 text-black hover:bg-cyan-300"
+            }`}
+          >
+            {statusUpdating
+              ? "Updating..."
+              : customer.is_active
+                ? "Deactivate account"
+                : "Activate account"}
+          </button>
+          {statusMessage && (
+            <span className="text-sm text-green-400">
+              {statusMessage}
+            </span>
+          )}
+        </div>
+        {statusError && (
+          <p className="text-sm text-red-400 mt-2">
+            {statusError}
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-6">

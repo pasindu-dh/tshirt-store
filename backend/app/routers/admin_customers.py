@@ -13,6 +13,7 @@ from app.dependencies import require_admin
 from app.schemas.customer import (
     AdminCustomerDetailOut,
     AdminCustomerOut,
+    CustomerStatusUpdate,
 )
 from app.services import customers as customer_service
 
@@ -39,6 +40,30 @@ def list_customers(
     )
     response.headers["X-Total-Count"] = str(total)
     return customers
+
+
+@router.patch(
+    "/{customer_id}/status",
+    response_model=AdminCustomerOut,
+)
+def update_customer_status(
+    customer_id: int,
+    payload: CustomerStatusUpdate,
+    db: Session = Depends(get_db),
+):
+    customer = customer_service.set_customer_active(
+        db,
+        customer_id,
+        payload.is_active,
+    )
+
+    if customer is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Customer not found.",
+        )
+
+    return customer
 
 
 @router.get(

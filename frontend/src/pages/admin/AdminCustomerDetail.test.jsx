@@ -6,6 +6,7 @@ import { getAdminCustomer } from "../../api/adminCustomers";
 
 vi.mock("../../api/adminCustomers", () => ({
   getAdminCustomer: vi.fn(),
+  setAdminCustomerActive: vi.fn(),
 }));
 
 const CUSTOMER = {
@@ -13,6 +14,7 @@ const CUSTOMER = {
   name: "Nimal Perera",
   email: "nimal@example.com",
   role: "customer",
+  is_active: true,
   created_at: "2026-01-10T10:00:00Z",
   order_count: 1,
   delivered_orders: 1,

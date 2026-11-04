@@ -1,11 +1,20 @@
-import { render, screen } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AdminCustomers from "./AdminCustomers";
-import { getAdminCustomers } from "../../api/adminCustomers";
+import {
+  getAdminCustomers,
+  setAdminCustomerActive,
+} from "../../api/adminCustomers";
 
 vi.mock("../../api/adminCustomers", () => ({
   getAdminCustomers: vi.fn(),
+  setAdminCustomerActive: vi.fn(),
 }));
 
 const CUSTOMER = {
@@ -13,6 +22,7 @@ const CUSTOMER = {
   name: "Nimal Perera",
   email: "nimal@example.com",
   role: "customer",
+  is_active: true,
   created_at: "2026-01-10T10:00:00Z",
   order_count: 3,
   delivered_orders: 2,
@@ -64,6 +74,34 @@ describe("AdminCustomers", () => {
       limit: 10,
       search: undefined,
     });
+  });
+
+  it("deactivates a customer account", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    setAdminCustomerActive.mockResolvedValue({
+      ...CUSTOMER,
+      is_active: false,
+    });
+
+    renderPage();
+    await screen.findByText("Nimal Perera");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Deactivate" })
+    );
+
+    await waitFor(() => {
+      expect(setAdminCustomerActive).toHaveBeenCalledWith(
+        5,
+        false
+      );
+    });
+    expect(
+      await screen.findByText("Nimal Perera deactivated.")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Activate" })
+    ).toBeInTheDocument();
   });
 
   it("shows an empty state", async () => {

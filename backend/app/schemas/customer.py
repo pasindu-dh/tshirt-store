@@ -1,9 +1,15 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.schemas.order import OrderOut
 from app.schemas.return_request import ReturnRequestOut
+
+
+class CustomerStatusUpdate(BaseModel):
+    is_active: bool
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class AdminCustomerOut(BaseModel):
@@ -11,6 +17,7 @@ class AdminCustomerOut(BaseModel):
     name: str
     email: str
     role: str
+    is_active: bool
     created_at: datetime
     order_count: int
     delivered_orders: int

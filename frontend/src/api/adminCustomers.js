@@ -17,3 +17,14 @@ export async function getAdminCustomer(customerId) {
   );
   return data;
 }
+
+export async function setAdminCustomerActive(
+  customerId,
+  isActive
+) {
+  const { data } = await client.patch(
+    `/admin/customers/${customerId}/status`,
+    { is_active: isActive }
+  );
+  return data;
+}

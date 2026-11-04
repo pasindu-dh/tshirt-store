@@ -14,6 +14,12 @@ credentials_exception = HTTPException(
     headers={"WWW-Authenticate": "Bearer"},
 )
 
+inactive_account_exception = HTTPException(
+    status_code=status.HTTP_401_UNAUTHORIZED,
+    detail="Account is inactive",
+    headers={"WWW-Authenticate": "Bearer"},
+)
+
 
 def get_current_user(
     token: str = Depends(oauth2_scheme),
@@ -28,6 +34,9 @@ def get_current_user(
 
     if user is None:
         raise credentials_exception
+
+    if not user.is_active:
+        raise inactive_account_exception
 
     return user
 
