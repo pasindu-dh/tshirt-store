@@ -102,7 +102,7 @@ function AdminOrderDetail({ orderId }) {
     if (
       action.confirm &&
       !window.confirm(
-        "Cancel this order? Reserved stock will be restored."
+        "Cancel this order? Reserved stock will be restored. If payment is already paid, handle any refund separately."
       )
     ) {
       return;
@@ -331,7 +331,9 @@ function AdminOrderDetail({ orderId }) {
             <p className="text-sm text-gray-300">
               {order.payment_method === "cod"
                 ? "Cash on Delivery"
-                : order.payment_method}
+                : order.payment_method === "online"
+                  ? "Online payment"
+                  : order.payment_method}
             </p>
             <p className="text-sm text-gray-400 mt-1 capitalize">
               Status: {order.payment_status}

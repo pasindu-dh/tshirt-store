@@ -136,12 +136,17 @@ test("a shopper can complete the full purchase journey", async ({
     ).toBeVisible();
     await expect(page.getByText("- LKR 245")).toBeVisible();
 
+    await page
+      .getByRole("radio", { name: /Test online payment/ })
+      .check();
+
     await page.getByRole("button", { name: "Place order" }).click();
     await page.waitForURL(/\/orders\/\d+$/);
     orderId = Number(page.url().match(/\/orders\/(\d+)$/)[1]);
     await expect(
       page.getByText("Order placed successfully")
     ).toBeVisible();
+    await expect(page.getByText("Payment: paid")).toBeVisible();
     await expect(
       page.getByRole("heading", { name: /Order #\d+/ })
     ).toBeVisible();

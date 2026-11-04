@@ -24,6 +24,7 @@ A full-stack web application featuring an interactive React frontend and a robus
 - **Uvicorn** (ASGI server)
 - **StaticFiles** (Local image serving)
 - **SMTP** (Optional order confirmation/status emails via the standard library)
+- **PayHere** (Optional hosted online checkout with signed notifications)
 - **CORS Middleware** (Configured to allow frontend connections)
 - **pytest + FastAPI TestClient** (Backend test suite)
 
@@ -165,9 +166,15 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 ### Orders (authenticated)
 > Requires a bearer token. Prices, shipping, and totals are computed server-side from the database, and stock is revalidated at checkout.
 
-- `POST /orders`: Place an order from the server cart using the supplied contact/shipping details and `payment_method: "cod"`. An optional `coupon_code` applies a server-validated discount. Stock is decremented, line items are snapshotted, and the cart is cleared in one transaction.
+- `POST /orders`: Place an order from the server cart using the supplied contact/shipping details and `payment_method` (`cod` or `online`). An optional `coupon_code` applies a server-validated discount. Stock is decremented, line items are snapshotted, and the cart is cleared in one transaction. Online orders require a configured payment provider.
 - `GET /orders`: The signed-in customer's orders, newest first.
 - `GET /orders/{id}`: One of the signed-in customer's orders.
+
+### Payments
+- `GET /payments/config`: Public payment capability flags (`disabled`, `payhere`, or `mock`) without exposing secrets.
+- `POST /payments/orders/{id}/session`: Authenticated owner creates a hosted-checkout session for an online order. PayHere returns the action URL and signed form fields; mock mode returns a local test session.
+- `POST /payments/orders/{id}/mock-complete`: Development/test-only completion endpoint; available only when the mock provider is explicitly enabled.
+- `POST /payments/payhere/notify`: PayHere server notification endpoint. Verifies the merchant signature, amount, and currency, then updates the payment/order idempotently.
 
 ### Reviews
 - `GET /reviews/product/{id}`: Public review list with count and average rating for an active product.
@@ -221,7 +228,7 @@ Sign in at `/login` with an admin account to manage the store:
 - Product cards open a product detail page at `/product/:slug` and include a wishlist heart.
 - The detail page includes an image gallery, color and size selection, live stock status, a stock-aware add-to-cart button, a wishlist toggle, and customer reviews with average ratings and one-review-per-customer editing.
 - Guests keep their cart in localStorage; after login or registration it is merged into the server-side cart. Signed-in customers keep their cart across sessions and devices. Expired access tokens are refreshed automatically.
-- Checkout requires an account, validates prices and stock server-side, supports **Cash on Delivery**, and accepts server-validated coupons. A flat shipping fee of LKR 350 is applied by default (configurable with `SHIPPING_FEE_LKR`). Card/wallet payments require a provider-hosted checkout and webhook integration, which is not configured.
+- Checkout requires an account, validates prices and stock server-side, supports **Cash on Delivery** and optional **PayHere hosted online payment**, and accepts server-validated coupons. Online orders redirect to PayHere's secure checkout; the signed PayHere notification updates payment status. A flat shipping fee of LKR 350 is applied by default (configurable with `SHIPPING_FEE_LKR`).
 - After ordering, customers see a confirmation and can review their orders at `/orders`. A confirmation email and status-update emails are sent when SMTP is configured.
 
 ## 🧪 Testing
@@ -236,7 +243,7 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-Coverage includes authentication and role guards, login rate limiting, catalog filters and slug lookup, cart stock caps and guest-cart merging, transactional order creation and stock decrement, coupon previews/discounts/usage rules, admin status transitions and cancellation restock, dashboard stats, reviews, wishlist privacy, upload validation, security headers, CORS, and order date filters.
+Coverage includes authentication and role guards, login rate limiting, catalog filters and slug lookup, cart stock caps and guest-cart merging, transactional order creation and stock decrement, coupon previews/discounts/usage rules, admin status transitions and cancellation restock, dashboard stats, reviews, wishlist privacy, upload validation, security headers, CORS, order date filters, mock online payments, and PayHere signature/amount verification.
 
 ### Frontend
 
@@ -249,7 +256,7 @@ npm run build
 
 ### End-to-end
 
-The Playwright test drives a full guest-cart → login → checkout → coupon → order → review → wishlist → history journey and verifies that the access-token refresh interceptor recovers from an expired token. It needs a running backend with an admin account.
+The Playwright test drives a full guest-cart → login → checkout → coupon → online payment → order → review → wishlist → history journey and verifies that the access-token refresh interceptor recovers from an expired token. It needs a running backend with an admin account and the mock payment provider enabled.
 
 ```bash
 cd frontend
@@ -257,7 +264,7 @@ npx playwright install chromium   # once
 E2E_DISPOSABLE_DB=1 E2E_ADMIN_EMAIL=... E2E_ADMIN_PASSWORD=... npm run test:e2e
 ```
 
-The test refuses to run unless `E2E_DISPOSABLE_DB=1` (or `CI=true`) is set, because it creates an order and a customer account. It deletes the product it creates. `E2E_ADMIN_EMAIL` and `E2E_ADMIN_PASSWORD` override the admin credentials read from `backend/.env`. See [`DEPLOYMENT.md`](DEPLOYMENT.md) for running the suite against a disposable database.
+The disposable backend must be started with `PAYMENT_PROVIDER=mock` and `PAYMENT_MOCK_ENABLED=true` so the journey can exercise the online-payment UI. The test refuses to run unless `E2E_DISPOSABLE_DB=1` (or `CI=true`) is set, because it creates an order and a customer account. It deletes the product and coupon it creates. `E2E_ADMIN_EMAIL` and `E2E_ADMIN_PASSWORD` override the admin credentials read from `backend/.env`. See [`DEPLOYMENT.md`](DEPLOYMENT.md) for running the suite against a disposable database.
 
 ## 🚢 Deployment
 

@@ -16,6 +16,7 @@ from app.routers import (
     categories,
     coupons,
     orders,
+    payments,
     products,
     reviews,
     uploads,
@@ -36,6 +37,27 @@ if (
     logger.warning(
         "JWT_SECRET is weak or still the development default. "
         "Set a strong secret in backend/.env before deploying."
+    )
+
+if settings.normalized_payment_provider == "mock":
+    if settings.payment_mock_enabled:
+        logger.warning(
+            "Mock online payments are enabled. Never use this mode "
+            "in production."
+        )
+elif settings.normalized_payment_provider == "payhere":
+    if not settings.online_payments_enabled:
+        logger.warning(
+            "PAYMENT_PROVIDER=payhere but PayHere credentials are "
+            "incomplete; online payments are disabled."
+        )
+elif settings.normalized_payment_provider not in {
+    "disabled",
+    "payhere",
+    "mock",
+}:
+    logger.warning(
+        "Unknown PAYMENT_PROVIDER value; online payments are disabled."
     )
 
 app = FastAPI(
@@ -91,6 +113,7 @@ app.include_router(categories.router)
 app.include_router(auth.router)
 app.include_router(cart.router)
 app.include_router(orders.router)
+app.include_router(payments.router)
 app.include_router(reviews.router)
 app.include_router(wishlist.router)
 app.include_router(coupons.router)

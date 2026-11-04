@@ -8,7 +8,7 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
     app_name: str = "FURZY T-Shirt Store API"
-    app_version: str = "0.8.0"
+    app_version: str = "0.9.0"
 
     # Default to an absolute path so the database location never depends on CWD.
     database_url: str = f"sqlite:///{(BACKEND_DIR / 'store.db').as_posix()}"
@@ -36,6 +36,17 @@ class Settings(BaseSettings):
     smtp_from_email: str = ""
     smtp_use_tls: bool = True
 
+    # Online payments. PAYMENT_PROVIDER can be "disabled", "mock", or
+    # "payhere". Mock mode is for tests/local development only.
+    payment_provider: str = "disabled"
+    payment_currency: str = "LKR"
+    payment_mock_enabled: bool = False
+    payhere_merchant_id: str = ""
+    payhere_merchant_secret: str = ""
+    payhere_sandbox: bool = True
+    frontend_base_url: str = "http://127.0.0.1:5173"
+    backend_public_url: str = "http://127.0.0.1:8005"
+
     # Admin account managed by `python -m app.seed_admin`.
     # There are intentionally no default email/password values. Set
     # ADMIN_EMAIL and ADMIN_PASSWORD in backend/.env; seed_admin refuses
@@ -57,6 +68,25 @@ class Settings(BaseSettings):
             for origin in self.frontend_origins.split(",")
             if origin.strip()
         ]
+
+    @property
+    def normalized_payment_provider(self) -> str:
+        return self.payment_provider.strip().lower()
+
+    @property
+    def online_payments_enabled(self) -> bool:
+        provider = self.normalized_payment_provider
+
+        if provider == "payhere":
+            return bool(
+                self.payhere_merchant_id.strip()
+                and self.payhere_merchant_secret.strip()
+            )
+
+        if provider == "mock":
+            return self.payment_mock_enabled
+
+        return False
 
 
 @lru_cache

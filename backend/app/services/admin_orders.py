@@ -133,7 +133,11 @@ def update_status(
                 if variant is not None:
                     variant.stock += item.quantity
 
-        order.payment_status = "cancelled"
+        order.payment_status = (
+            "cancelled"
+            if order.payment_status != "paid"
+            else "paid"
+        )
 
         if order.discount_code:
             coupon = db.scalar(
@@ -145,7 +149,8 @@ def update_status(
             if coupon is not None and coupon.used_count > 0:
                 coupon.used_count -= 1
     elif new_status == "delivered":
-        order.payment_status = "paid"
+        if order.payment_method == "cod":
+            order.payment_status = "paid"
 
     order.status = new_status
 

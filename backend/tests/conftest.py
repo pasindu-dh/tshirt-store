@@ -18,6 +18,11 @@ os.environ["SHIPPING_FEE_LKR"] = "350"
 os.environ["MAX_UPLOAD_BYTES"] = str(5 * 1024 * 1024)
 os.environ["SMTP_HOST"] = ""
 os.environ["SMTP_FROM_EMAIL"] = ""
+os.environ["PAYMENT_PROVIDER"] = "mock"
+os.environ["PAYMENT_MOCK_ENABLED"] = "true"
+os.environ["PAYMENT_CURRENCY"] = "LKR"
+os.environ["FRONTEND_BASE_URL"] = "http://127.0.0.1:5173"
+os.environ["BACKEND_PUBLIC_URL"] = "http://127.0.0.1:8005"
 
 from app.database import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402

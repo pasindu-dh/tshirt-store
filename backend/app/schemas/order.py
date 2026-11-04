@@ -13,7 +13,7 @@ class OrderCreate(BaseModel):
     postal_code: str = Field(default="", max_length=20)
     country: str = Field(default="Sri Lanka", min_length=2, max_length=100)
     notes: str = Field(default="", max_length=500)
-    payment_method: Literal["cod"] = "cod"
+    payment_method: Literal["cod", "online"] = "cod"
     coupon_code: str = Field(default="", max_length=40)
 
     model_config = ConfigDict(extra="forbid")

@@ -1,8 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { imageUrl } from "../api/client";
 import { previewCoupon } from "../api/coupons";
 import { createOrder } from "../api/orders";
+import {
+  completeMockPayment,
+  createPaymentSession,
+  getPaymentConfig,
+  submitPayHereCheckout,
+} from "../api/payments";
 import useAuth from "../hooks/useAuth";
 import useCart from "../hooks/useCart";
 import { getApiError } from "../utils/errors";
@@ -36,6 +42,27 @@ function Checkout() {
   const [coupon, setCoupon] = useState(null);
   const [couponError, setCouponError] = useState("");
   const [couponLoading, setCouponLoading] = useState(false);
+  const [paymentConfig, setPaymentConfig] = useState({
+    provider: "disabled",
+    online_enabled: false,
+    currency: "LKR",
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getPaymentConfig()
+      .then((config) => {
+        if (!cancelled) setPaymentConfig(config);
+      })
+      .catch(() => {
+        // Cash on Delivery remains available if configuration fails.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const updateField = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -87,6 +114,38 @@ function Checkout() {
         await clearCart();
       } catch {
         // The server clears the cart when the order is created.
+      }
+
+      if (order.payment_method === "online") {
+        try {
+          const session = await createPaymentSession(order.id);
+
+          if (session.provider === "payhere") {
+            submitPayHereCheckout(session);
+            return;
+          }
+
+          if (session.provider === "mock") {
+            await completeMockPayment(order.id);
+            navigate(`/orders/${order.id}`, {
+              state: { justPlaced: true },
+            });
+            return;
+          }
+
+          throw new Error("Unsupported payment provider.");
+        } catch (paymentError) {
+          navigate(`/orders/${order.id}`, {
+            state: {
+              justPlaced: true,
+              paymentError: getApiError(
+                paymentError,
+                "Payment could not be started. Open the order to retry."
+              ),
+            },
+          });
+          return;
+        }
       }
 
       navigate(`/orders/${order.id}`, {
@@ -270,13 +329,19 @@ function Checkout() {
             <section className="bg-[#020617] border border-gray-800 rounded-2xl p-6 space-y-4">
               <h2 className="text-lg font-semibold">Payment</h2>
 
-              <label className="flex items-start gap-3 bg-black border border-cyan-500/40 rounded-xl p-4">
+              <label
+                className={`flex items-start gap-3 bg-black border rounded-xl p-4 ${
+                  form.payment_method === "cod"
+                    ? "border-cyan-500/60"
+                    : "border-gray-700"
+                }`}
+              >
                 <input
                   type="radio"
                   name="payment_method"
                   value="cod"
-                  checked
-                  readOnly
+                  checked={form.payment_method === "cod"}
+                  onChange={() => updateField("payment_method", "cod")}
                   className="mt-1 accent-cyan-400"
                 />
                 <span>
@@ -288,6 +353,39 @@ function Checkout() {
                   </span>
                 </span>
               </label>
+
+              {paymentConfig.online_enabled && (
+                <label
+                  className={`flex items-start gap-3 bg-black border rounded-xl p-4 ${
+                    form.payment_method === "online"
+                      ? "border-cyan-500/60"
+                      : "border-gray-700"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="payment_method"
+                    value="online"
+                    checked={form.payment_method === "online"}
+                    onChange={() =>
+                      updateField("payment_method", "online")
+                    }
+                    className="mt-1 accent-cyan-400"
+                  />
+                  <span>
+                    <span className="block font-medium">
+                      {paymentConfig.provider === "mock"
+                        ? "Test online payment"
+                        : "Pay online with PayHere"}
+                    </span>
+                    <span className="block text-sm text-gray-400 mt-1">
+                      {paymentConfig.provider === "mock"
+                        ? "Simulated payment for local testing. No real money moves."
+                        : "You will be redirected to PayHere's secure checkout."}
+                    </span>
+                  </span>
+                </label>
+              )}
             </section>
 
             <section className="bg-[#020617] border border-gray-800 rounded-2xl p-6">

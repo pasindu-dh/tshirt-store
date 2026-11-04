@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { imageUrl } from "../api/client";
 import { getOrder } from "../api/orders";
+import {
+  completeMockPayment,
+  createPaymentSession,
+  submitPayHereCheckout,
+} from "../api/payments";
 import OrderStatusBadge from "../components/OrderStatusBadge";
 import { getApiError } from "../utils/errors";
 
@@ -21,6 +26,13 @@ function OrderDetail({ orderId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notFound, setNotFound] = useState(false);
+  const [paymentStarting, setPaymentStarting] = useState(false);
+  const [paymentError, setPaymentError] = useState(
+    () => location.state?.paymentError ?? ""
+  );
+  const paymentReturn = new URLSearchParams(location.search).get(
+    "payment"
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -48,6 +60,51 @@ function OrderDetail({ orderId }) {
       cancelled = true;
     };
   }, [orderId]);
+
+  const refreshPaymentStatus = async () => {
+    try {
+      const data = await getOrder(orderId);
+      setOrder(data);
+      setPaymentError("");
+    } catch (requestError) {
+      setPaymentError(
+        getApiError(
+          requestError,
+          "Could not refresh the payment status."
+        )
+      );
+    }
+  };
+
+  const handlePayNow = async () => {
+    if (!order) return;
+
+    setPaymentStarting(true);
+    setPaymentError("");
+
+    try {
+      const session = await createPaymentSession(order.id);
+
+      if (session.provider === "payhere") {
+        submitPayHereCheckout(session);
+        return;
+      }
+
+      if (session.provider === "mock") {
+        await completeMockPayment(order.id);
+        await refreshPaymentStatus();
+        return;
+      }
+
+      throw new Error("Unsupported payment provider.");
+    } catch (requestError) {
+      setPaymentError(
+        getApiError(requestError, "Could not start payment.")
+      );
+    } finally {
+      setPaymentStarting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -91,6 +148,16 @@ function OrderDetail({ orderId }) {
   if (!order) return null;
 
   const justPlaced = location.state?.justPlaced;
+  const canPay =
+    order.payment_method === "online" &&
+    order.payment_status !== "paid" &&
+    order.status !== "cancelled";
+  const paymentTone =
+    order.payment_status === "paid"
+      ? "text-green-400"
+      : order.payment_status === "failed"
+        ? "text-red-400"
+        : "text-yellow-400";
 
   return (
     <div className="min-h-screen px-6 md:px-10 pb-20 pt-10">
@@ -220,11 +287,61 @@ function OrderDetail({ orderId }) {
               <p className="text-sm text-gray-300">
                 {order.payment_method === "cod"
                   ? "Cash on Delivery"
-                  : order.payment_method}
+                  : order.payment_method === "online"
+                    ? "Online payment"
+                    : order.payment_method}
               </p>
-              <p className="text-sm text-gray-400 mt-1 capitalize">
+              <p
+                className={`text-sm mt-1 capitalize ${paymentTone}`}
+              >
                 Status: {order.payment_status}
               </p>
+
+              {paymentReturn === "return" &&
+                order.payment_status === "pending" && (
+                  <p className="text-xs text-yellow-400 mt-3">
+                    Payment is being confirmed by the provider.
+                  </p>
+                )}
+
+              {paymentReturn === "cancel" && (
+                <p className="text-xs text-red-400 mt-3">
+                  Payment was cancelled. You can try again below.
+                </p>
+              )}
+
+              {paymentError && (
+                <p className="text-sm text-red-400 mt-3">
+                  {paymentError}
+                </p>
+              )}
+
+              {canPay && (
+                <button
+                  type="button"
+                  onClick={handlePayNow}
+                  disabled={paymentStarting}
+                  className="mt-4 w-full bg-cyan-400 text-black py-2 rounded-lg font-semibold hover:bg-cyan-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {paymentStarting
+                    ? "Starting payment..."
+                    : order.payment_status === "failed"
+                      ? "Retry payment"
+                      : "Pay now"}
+                </button>
+              )}
+
+              {order.payment_method === "online" &&
+                order.payment_status !== "paid" &&
+                order.status !== "cancelled" && (
+                  <button
+                    type="button"
+                    onClick={refreshPaymentStatus}
+                    className="mt-2 w-full border border-gray-700 text-gray-300 py-2 rounded-lg text-sm hover:border-cyan-400 hover:text-cyan-400 transition"
+                  >
+                    Refresh payment status
+                  </button>
+                )}
             </section>
 
             <div className="flex flex-col gap-3">

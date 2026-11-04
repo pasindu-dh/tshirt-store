@@ -73,6 +73,13 @@ Run `python -m alembic upgrade head` before starting a new release/container.
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | SMTP credentials, supplied through the host's secret manager |
 | `SMTP_FROM_EMAIL` | From address used for order notifications |
 | `SMTP_USE_TLS` | `true` for STARTTLS on port 587 |
+| `PAYMENT_PROVIDER` | `disabled`, `mock`, or `payhere`; use `payhere` in production |
+| `PAYMENT_CURRENCY` | `LKR` |
+| `PAYHERE_MERCHANT_ID`, `PAYHERE_MERCHANT_SECRET` | PayHere merchant credentials, kept in the secret manager |
+| `PAYHERE_SANDBOX` | `true` for sandbox testing, `false` for live payments |
+| `FRONTEND_BASE_URL` | Public frontend URL used for PayHere return/cancel redirects |
+| `BACKEND_PUBLIC_URL` | Public HTTPS API URL used to build the PayHere notify URL |
+| `PAYMENT_MOCK_ENABLED` | Must remain `false` in production |
 
 Generate the admin account once, after migrations:
 
@@ -146,8 +153,8 @@ your development data:
 
 ```bash
 cd backend
-# Set DATABASE_URL to a throwaway SQLite file and ADMIN_* to test values,
-# then:
+# Set DATABASE_URL to a throwaway SQLite file, ADMIN_* to test values,
+# PAYMENT_PROVIDER=mock, and PAYMENT_MOCK_ENABLED=true, then:
 python -m alembic upgrade head
 python -m app.seed
 python -m app.seed_admin
@@ -164,7 +171,9 @@ E2E_DISPOSABLE_DB=1 E2E_ADMIN_EMAIL=... E2E_ADMIN_PASSWORD=... npm run test:e2e
 
 The test skips itself unless `E2E_DISPOSABLE_DB=1` or `CI=true` is set,
 because it leaves an order and customer account behind. It deletes the product
-it creates.
+and coupon it creates; reviews and wishlist entries are removed with the
+product. The online-payment step requires `PAYMENT_PROVIDER=mock` and
+`PAYMENT_MOCK_ENABLED=true` on the disposable backend.
 
 If a Vite dev server is not already running, the Playwright config starts one
 on port 5173 using the default API URL. Set `E2E_API_URL` and `E2E_BASE_URL` to
@@ -180,20 +189,59 @@ Alternatively, `backend/.env` is read for the admin email/password when the
 `E2E_ADMIN_*` variables are not set. Never point the E2E test at the production
 database.
 
-## 6. Payments
+## 6. PayHere online payments
 
-The application currently supports **Cash on Delivery** only. Before adding a
-card or wallet gateway, choose a provider that supports hosted checkout and
-server-side webhook verification. Never accept raw card details in this app.
-A gateway integration should:
+The application supports Cash on Delivery and an optional PayHere hosted
+checkout. Card details are entered only on PayHere's hosted page; this
+application stores provider references and payment status, never card data.
 
-- create the payment intent server-side from the server-computed order total;
-- verify the webhook signature and mark the order paid idempotently;
-- handle failed/expired payments without decrementing stock twice;
-- store only provider references, never card data.
+### Configuration
 
-That integration is intentionally not included without a provider account and
-its credentials.
+1. Create a PayHere merchant account and obtain sandbox credentials first.
+2. Set these values through the host's secret manager:
+
+```text
+PAYMENT_PROVIDER=payhere
+PAYMENT_CURRENCY=LKR
+PAYHERE_MERCHANT_ID=...
+PAYHERE_MERCHANT_SECRET=...
+PAYHERE_SANDBOX=true
+FRONTEND_BASE_URL=https://your-frontend-host
+BACKEND_PUBLIC_URL=https://your-api-host
+PAYMENT_MOCK_ENABLED=false
+```
+
+3. The backend builds the `notify_url` as
+   `BACKEND_PUBLIC_URL/payments/payhere/notify`. It must be publicly reachable
+   over HTTPS for PayHere to deliver signed notifications. For local sandbox
+   testing, expose the backend with a tunnel such as ngrok.
+4. Checkout redirects to PayHere. The return/cancel URLs point back to
+   `FRONTEND_BASE_URL/orders/{id}`.
+5. Verify a sandbox payment end to end: order is created as `payment_status =
+   pending`, PayHere notification is verified, order/payment become `paid`,
+   and the customer/admin see the updated status.
+6. Only after sandbox verification, switch `PAYHERE_SANDBOX=false` and use live
+   credentials.
+
+The webhook verifies the PayHere `md5sig`, merchant ID, amount, and currency
+before changing any payment. Success/failure notifications are idempotent;
+a paid payment is never downgraded by a later failure notification. Failed
+online payments can be retried from the order detail page.
+
+### Refunds and cancellation
+
+There is no automated refund API integration. If an order paid online is
+cancelled, the order is cancelled and stock/coupon usage is restored, but the
+payment remains `paid`; process the refund in the PayHere dashboard or add a
+provider refund workflow later. Never enable `PAYMENT_PROVIDER=mock` in
+production: it allows test-only completion of online orders.
+
+### Mock mode
+
+`PAYMENT_PROVIDER=mock` with `PAYMENT_MOCK_ENABLED=true` is for local
+development and CI only. It exercises the same order/payment state transitions
+without money or provider credentials, and the frontend labels it as test
+online payment.
 
 ## 7. Production security checklist
 
@@ -203,6 +251,9 @@ its credentials.
 - [ ] Database backups and SSL enabled.
 - [ ] Uploads directory private to the app and backed up.
 - [ ] SMTP password stored as a secret; sender domain configured and tested.
+- [ ] PayHere merchant secret stored as a secret; sandbox disabled for live.
+- [ ] `BACKEND_PUBLIC_URL/payments/payhere/notify` reachable over HTTPS.
+- [ ] `PAYMENT_MOCK_ENABLED=false` and `PAYMENT_PROVIDER=payhere` in production.
 - [ ] Login rate limiting sized for your traffic or moved to Redis.
 - [ ] Admin account verified with `python -m app.seed_admin` validation rules.
 - [ ] Dependencies updated and `npm audit` / `pip-audit` reviewed.

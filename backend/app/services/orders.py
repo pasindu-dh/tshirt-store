@@ -39,6 +39,15 @@ def get_order(
 def create_order(
     db: Session, user: User, payload: OrderCreate
 ) -> Order:
+    if (
+        payload.payment_method == "online"
+        and not settings.online_payments_enabled
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Online payment is not available.",
+        )
+
     cart_items = list(
         db.scalars(
             select(CartItem)
