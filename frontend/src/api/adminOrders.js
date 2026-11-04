@@ -83,6 +83,17 @@ export async function getAdminOrderReturns(orderId) {
   return data;
 }
 
+export async function getAdminReturns(params = {}) {
+  const { data, headers } = await client.get("/admin/returns", {
+    params,
+  });
+
+  return {
+    returns: data,
+    total: Number(headers["x-total-count"] ?? data.length),
+  };
+}
+
 export async function reviewAdminOrderReturn(
   orderId,
   returnId,

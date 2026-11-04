@@ -120,6 +120,36 @@ def send_payment_confirmation(
     )
 
 
+def send_return_status_update(
+    to_email: str,
+    order_id: int,
+    return_id: int,
+    status: str,
+    note: str = "",
+) -> bool:
+    subjects = {
+        "requested": "Return request received",
+        "approved": "Return request approved",
+        "rejected": "Return request rejected",
+        "completed": "Return completed",
+        "cancelled": "Return request cancelled",
+    }
+    subject = (
+        f"FURZY return #{return_id} for order #{order_id}: "
+        f"{subjects.get(status, status)}"
+    )
+    body = (
+        f"Your return request #{return_id} for FURZY order "
+        f"#{order_id} is now: {status}.\n\n"
+    )
+
+    if note:
+        body += f"Note: {note}\n\n"
+
+    body += "FURZY"
+    return _send_email(to_email, subject, body)
+
+
 def send_order_status_update(
     to_email: str,
     order_id: int,

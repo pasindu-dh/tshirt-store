@@ -268,11 +268,13 @@ allowlist the server IP. Set `PAYHERE_API_APP_ID` and
 Full refunds set the payment/order payment status to `refunded`; partial
 refunds remain recorded against a paid payment. Dashboard revenue excludes
 fully refunded and chargedback delivered orders, but does not currently
-subtract partial refunds from gross revenue. Customer self-service return
-requests are available for delivered orders at the order detail page. Admins
-approve or reject them and can link an existing refund record. Returns are
-order-level, do not automatically restock inventory, and do not send
-automatic status emails.
+subtract partial refunds from gross revenue. Customer self-service returns are
+item-level: customers choose item quantities on a delivered order and can
+cancel a pending request. Admins approve or reject requests; marking an
+approved return completed restocks the returned variant quantities exactly
+once. Admins can link an existing refund record to an approved or completed
+return. Status emails are sent for requested, approved, rejected, completed,
+and cancelled returns when SMTP is configured.
 
 ### Stock reservation expiry
 
@@ -332,7 +334,7 @@ online payment.
 - [ ] SMTP password stored as a secret; sender domain configured and tested.
 - [ ] PayHere merchant secret stored as a secret; sandbox disabled for live.
 - [ ] PayHere Merchant API key restricted to the required permissions/domain/IP.
-- [ ] Return workflow reviewed: order-level requests, manual restocking, and no automatic return emails.
+- [ ] Return workflow reviewed: item-level requests, admin completion before restocking, and return status emails.
 - [ ] `APP_ENV=production`, `PAYMENT_PROVIDER=payhere`, and `PAYMENT_MOCK_ENABLED=false`.
 - [ ] `BACKEND_PUBLIC_URL/payments/payhere/notify` reachable over HTTPS.
 - [ ] Stock reservation expiry configured and, if the in-process sweeper is disabled, a cron job runs `python -m app.expire_reservations`.

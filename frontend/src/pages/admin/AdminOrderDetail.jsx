@@ -60,6 +60,14 @@ const TONE_CLASSES = {
     "border border-red-500/60 text-red-400 hover:bg-red-500/10",
 };
 
+const RETURN_STATUS_CLASSES = {
+  requested: "text-yellow-400",
+  approved: "text-green-400",
+  completed: "text-green-400",
+  rejected: "text-red-400",
+  cancelled: "text-red-400",
+};
+
 function formatDate(value) {
   return new Date(value).toLocaleDateString(undefined, {
     year: "numeric",
@@ -214,6 +222,15 @@ function AdminOrderDetail({ orderId }) {
   };
 
   const handleReviewReturn = async (returnId, status) => {
+    if (
+      status === "completed" &&
+      !window.confirm(
+        "Mark this return completed? The returned items will be added back to stock."
+      )
+    ) {
+      return;
+    }
+
     setReturnActionId(returnId);
     setReturnsError("");
     setReturnMessage("");
@@ -1109,11 +1126,9 @@ function AdminOrderDetail({ orderId }) {
                       </p>
                       <span
                         className={`text-xs capitalize ${
-                          request.status === "approved"
-                            ? "text-green-400"
-                            : request.status === "rejected"
-                              ? "text-red-400"
-                              : "text-yellow-400"
+                          RETURN_STATUS_CLASSES[
+                            request.status
+                          ] ?? "text-gray-400"
                         }`}
                       >
                         {request.status}
@@ -1123,6 +1138,28 @@ function AdminOrderDetail({ orderId }) {
                     <p className="text-sm text-gray-300">
                       {request.reason}
                     </p>
+                    {request.items?.length > 0 && (
+                      <ul className="space-y-1">
+                        {request.items.map((item) => (
+                          <li
+                            key={item.id}
+                            className="text-xs text-gray-400"
+                          >
+                            {item.product_name} ({item.color} /{" "}
+                            {item.size}) × {item.quantity}
+                            {item.restocked_at
+                              ? " · restocked"
+                              : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {request.stock_restocked_at && (
+                      <p className="text-xs text-green-400">
+                        Items restocked{" "}
+                        {formatDate(request.stock_restocked_at)}
+                      </p>
+                    )}
                     {request.notes && (
                       <p className="text-xs text-gray-500">
                         {request.notes}
@@ -1180,7 +1217,33 @@ function AdminOrderDetail({ orderId }) {
                       </div>
                     )}
 
-                    {request.status === "approved" &&
+                    {request.status === "approved" && (
+                      <div className="space-y-1 pt-2 border-t border-gray-800">
+                        <button
+                          type="button"
+                          disabled={returnActionId === request.id}
+                          onClick={() =>
+                            handleReviewReturn(
+                              request.id,
+                              "completed"
+                            )
+                          }
+                          className="w-full bg-cyan-400 text-black py-2 rounded-lg text-sm font-semibold hover:bg-cyan-300 disabled:opacity-50"
+                        >
+                          {returnActionId === request.id
+                            ? "Completing..."
+                            : "Mark completed & restock"}
+                        </button>
+                        <p className="text-xs text-gray-500">
+                          Only complete this after the returned items
+                          have been received.
+                        </p>
+                      </div>
+                    )}
+
+                    {["approved", "completed"].includes(
+                      request.status
+                    ) &&
                       !request.refund_id && (
                         <div className="space-y-2 pt-2 border-t border-gray-800">
                           {availableRefunds.length > 0 ? (

@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from "react-router-dom";
 import { imageUrl } from "../api/client";
 import { getOrder } from "../api/orders";
 import {
+  cancelOrderReturn,
   createOrderReturn,
   getOrderReturns,
 } from "../api/returns";
@@ -24,6 +25,16 @@ function formatDate(value) {
   });
 }
 
+const COUNTED_RETURN_STATUSES = ["requested", "approved", "completed"];
+
+const RETURN_STATUS_CLASSES = {
+  requested: "text-yellow-400",
+  approved: "text-green-400",
+  completed: "text-green-400",
+  rejected: "text-red-400",
+  cancelled: "text-red-400",
+};
+
 function OrderDetail({ orderId }) {
   const location = useLocation();
   const [order, setOrder] = useState(null);
@@ -44,6 +55,8 @@ function OrderDetail({ orderId }) {
   const [returnNotes, setReturnNotes] = useState("");
   const [returnSubmitting, setReturnSubmitting] = useState(false);
   const [returnMessage, setReturnMessage] = useState("");
+  const [returnQuantities, setReturnQuantities] = useState({});
+  const [returnCancellingId, setReturnCancellingId] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,17 +121,36 @@ function OrderDetail({ orderId }) {
       return;
     }
 
+    const items = Object.entries(returnQuantities)
+      .map(([orderItemId, quantity]) => ({
+        order_item_id: Number(orderItemId),
+        quantity: Number(quantity),
+      }))
+      .filter(
+        (item) =>
+          Number.isInteger(item.quantity) && item.quantity > 0
+      );
+
+    if (items.length === 0) {
+      setReturnsError(
+        "Select at least one item and quantity to return."
+      );
+      return;
+    }
+
     setReturnSubmitting(true);
 
     try {
       await createOrderReturn(orderId, {
         reason: returnReason.trim(),
         notes: returnNotes.trim(),
+        items,
       });
       const updated = await getOrderReturns(orderId);
       setReturns(updated);
       setReturnReason("");
       setReturnNotes("");
+      setReturnQuantities({});
       setReturnMessage("Return request submitted.");
     } catch (requestError) {
       setReturnsError(
@@ -129,6 +161,32 @@ function OrderDetail({ orderId }) {
       );
     } finally {
       setReturnSubmitting(false);
+    }
+  };
+
+  const handleCancelReturn = async (returnId) => {
+    if (!window.confirm("Cancel this return request?")) {
+      return;
+    }
+
+    setReturnCancellingId(returnId);
+    setReturnsError("");
+    setReturnMessage("");
+
+    try {
+      await cancelOrderReturn(orderId, returnId);
+      const updated = await getOrderReturns(orderId);
+      setReturns(updated);
+      setReturnMessage("Return request cancelled.");
+    } catch (requestError) {
+      setReturnsError(
+        getApiError(
+          requestError,
+          "Could not cancel the return request."
+        )
+      );
+    } finally {
+      setReturnCancellingId(null);
     }
   };
 
@@ -235,8 +293,30 @@ function OrderDetail({ orderId }) {
   const activeReturn = returns.find((request) =>
     ["requested", "approved"].includes(request.status)
   );
+  const returnedByItem = returns
+    .filter((request) =>
+      COUNTED_RETURN_STATUSES.includes(request.status)
+    )
+    .reduce((totals, request) => {
+      for (const item of request.items ?? []) {
+        if (item.order_item_id == null) continue;
+
+        totals[item.order_item_id] =
+          (totals[item.order_item_id] ?? 0) + item.quantity;
+      }
+
+      return totals;
+    }, {});
+  const returnableItems = order.items
+    .map((item) => ({
+      ...item,
+      remaining: item.quantity - (returnedByItem[item.id] ?? 0),
+    }))
+    .filter((item) => item.remaining > 0);
   const canRequestReturn =
-    order.status === "delivered" && !activeReturn;
+    order.status === "delivered" &&
+    !activeReturn &&
+    returnableItems.length > 0;
 
   return (
     <div className="min-h-screen px-6 md:px-10 pb-20 pt-10">
@@ -479,7 +559,8 @@ function OrderDetail({ orderId }) {
             Returns
           </h2>
           <p className="text-sm text-gray-400 mt-1">
-            Request a return after your order has been delivered.
+            Request a return after your order has been delivered. Select
+            the items and quantities you want to send back.
           </p>
 
           {returnsLoading ? (
@@ -501,11 +582,9 @@ function OrderDetail({ orderId }) {
                         </p>
                         <span
                           className={`text-xs capitalize ${
-                            request.status === "approved"
-                              ? "text-green-400"
-                              : request.status === "rejected"
-                                ? "text-red-400"
-                                : "text-yellow-400"
+                            RETURN_STATUS_CLASSES[
+                              request.status
+                            ] ?? "text-gray-400"
                           }`}
                         >
                           {request.status}
@@ -514,6 +593,22 @@ function OrderDetail({ orderId }) {
                       <p className="text-sm text-gray-300 mt-2">
                         {request.reason}
                       </p>
+                      {request.items?.length > 0 && (
+                        <ul className="mt-2 space-y-1">
+                          {request.items.map((item) => (
+                            <li
+                              key={item.id}
+                              className="text-xs text-gray-400"
+                            >
+                              {item.product_name} ({item.color} /{" "}
+                              {item.size}) × {item.quantity}
+                              {item.restocked_at
+                                ? " · restocked"
+                                : ""}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                       {request.notes && (
                         <p className="text-xs text-gray-500 mt-1">
                           {request.notes}
@@ -530,9 +625,31 @@ function OrderDetail({ orderId }) {
                           {request.refund.status}
                         </p>
                       )}
+                      {request.stock_restocked_at && (
+                        <p className="text-xs text-green-400 mt-2">
+                          Items restocked{" "}
+                          {formatDate(request.stock_restocked_at)}
+                        </p>
+                      )}
                       <p className="text-xs text-gray-600 mt-2">
                         Requested {formatDate(request.created_at)}
                       </p>
+                      {request.status === "requested" && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleCancelReturn(request.id)
+                          }
+                          disabled={
+                            returnCancellingId === request.id
+                          }
+                          className="mt-3 border border-red-500/50 text-red-400 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-red-500/10 disabled:opacity-50"
+                        >
+                          {returnCancellingId === request.id
+                            ? "Cancelling..."
+                            : "Cancel request"}
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -549,6 +666,53 @@ function OrderDetail({ orderId }) {
                   onSubmit={handleReturnSubmit}
                   className="mt-5 space-y-3 border-t border-gray-800 pt-4"
                 >
+                  <fieldset className="space-y-2">
+                    <legend className="text-sm text-gray-300">
+                      Items to return
+                    </legend>
+                    {returnableItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center gap-3 border border-gray-800 rounded-lg p-3"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm">
+                            {item.product_name}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {item.color} / {item.size} · {item.sku}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            Up to {item.remaining} returnable
+                          </p>
+                        </div>
+                        <label className="text-xs text-gray-400">
+                          Qty
+                          <input
+                            type="number"
+                            min="0"
+                            max={item.remaining}
+                            value={returnQuantities[item.id] ?? 0}
+                            onChange={(event) => {
+                              const next = Math.max(
+                                0,
+                                Math.min(
+                                  item.remaining,
+                                  Number(event.target.value) || 0
+                                )
+                              );
+                              setReturnQuantities((current) => ({
+                                ...current,
+                                [item.id]: next,
+                              }));
+                            }}
+                            aria-label={`Quantity of ${item.product_name} to return`}
+                            className="mt-1 w-20 p-2 rounded-lg bg-black border border-gray-700 outline-none focus:border-cyan-400"
+                          />
+                        </label>
+                      </div>
+                    ))}
+                  </fieldset>
                   <label className="block text-sm text-gray-300">
                     Reason for return
                     <textarea
@@ -594,22 +758,22 @@ function OrderDetail({ orderId }) {
                   You have an active return request. We will update
                   this page after review.
                 </p>
-              ) : (
-                order.status !== "delivered" && (
-                  <p className="text-sm text-gray-400 mt-4">
-                    Returns can be requested once this order is
-                    delivered.
-                  </p>
-                )
-              )}
+              ) : order.status !== "delivered" ? (
+                <p className="text-sm text-gray-400 mt-4">
+                  Returns can be requested once this order is
+                  delivered.
+                </p>
+              ) : returnableItems.length === 0 ? (
+                <p className="text-sm text-gray-400 mt-4">
+                  Every item from this order has already been returned.
+                </p>
+              ) : null}
 
-              {!canRequestReturn &&
-                returnsError &&
-                returns.length === 0 && (
-                  <p className="text-sm text-red-400 mt-3">
-                    {returnsError}
-                  </p>
-                )}
+              {!canRequestReturn && returnsError && (
+                <p className="text-sm text-red-400 mt-3">
+                  {returnsError}
+                </p>
+              )}
             </>
           )}
         </section>

@@ -13,6 +13,7 @@ from app.routers import (
     admin,
     admin_coupons,
     admin_orders,
+    admin_returns,
     admin_stats,
     auth,
     cart,
@@ -170,6 +171,7 @@ app.include_router(coupons.router)
 app.include_router(admin.router)
 app.include_router(admin_coupons.router)
 app.include_router(admin_orders.router)
+app.include_router(admin_returns.router)
 app.include_router(admin_stats.router)
 app.include_router(uploads.router)
 

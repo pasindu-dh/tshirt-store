@@ -169,8 +169,9 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 - `POST /orders`: Place an order from the server cart using the supplied contact/shipping details and `payment_method` (`cod` or `online`). An optional `coupon_code` applies a server-validated discount. Stock is decremented, line items are snapshotted, and the cart is cleared in one transaction. Online orders require a configured payment provider and receive a configurable reservation expiry.
 - `GET /orders`: The signed-in customer's orders, newest first.
 - `GET /orders/{id}`: One of the signed-in customer's orders, including reservation and stock-release state.
-- `GET /orders/{id}/returns`: The customer's return requests for one of their orders.
-- `POST /orders/{id}/returns`: Request a return after delivery (`reason`, optional `notes`); one active request per order.
+- `GET /orders/{id}/returns`: The customer's return requests for one of their orders, including selected items, restock state, and linked refund status.
+- `POST /orders/{id}/returns`: Request an item-level return after delivery (`items: [{ order_item_id, quantity }]`, `reason`, optional `notes`). One active request per order; quantities are capped at what has not already been returned.
+- `POST /orders/{id}/returns/{return_id}/cancel`: Cancel a pending (`requested`) return request so the customer can submit a new one.
 
 ### Payments
 - `GET /payments/config`: Public payment capability flags (`disabled`, `payhere`, or `mock`) without exposing secrets.
@@ -214,9 +215,10 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 - `GET /admin/orders`: Paginated order list with optional `status`, `search`, `date_from`, and `date_to` filters; returns `X-Total-Count`.
 - `GET /admin/orders/{id}`: Full order detail for any customer order.
 - `PATCH /admin/orders/{id}/status`: Advance an order through `pending → confirmed → shipped → delivered`, or cancel from `pending`/`confirmed`. Online orders must be paid before they can be delivered. Cancelling restores reserved stock/coupon usage once; delivering marks COD payment as paid. Status changes send an email when SMTP is configured.
+- `GET /admin/returns`: Global, paginated return queue with optional `status` and `search` filters (return/order number, customer name/email, or reason); returns `X-Total-Count`.
 - `GET /admin/orders/{id}/returns`: Return requests for the order.
-- `PATCH /admin/orders/{id}/returns/{return_id}`: Approve or reject a requested return with an optional review note.
-- `PATCH /admin/orders/{id}/returns/{return_id}/refund`: Link an existing refund record to an approved return request.
+- `PATCH /admin/orders/{id}/returns/{return_id}`: Approve or reject a requested return with an optional review note. After approval, mark it `completed` to restock the returned items exactly once.
+- `PATCH /admin/orders/{id}/returns/{return_id}/refund`: Link an existing refund record to an approved or completed return request.
 - `GET /admin/orders/{id}/payments`: Payment attempts, references, provider transaction IDs, statuses, refund/return records, and event history.
 - `POST /admin/orders/{id}/payments/{payment_id}/reconcile`: Record a manually verified paid/failed/cancelled/chargedback result. The admin and note are preserved in the payment event history.
 - `POST /admin/orders/{id}/payments/{payment_id}/reconcile-provider`: Verify the payment against the PayHere Retrieval API and apply the provider-confirmed status.
@@ -230,7 +232,8 @@ Sign in at `/login` with an admin account to manage the store:
 
 - **Dashboard**: delivered revenue, open/pending orders, low-stock variants, order/product/category counts, and quick actions.
 - **Orders**: search by order number/customer, filter by status and date range, paginate, and open order details.
-- **Order detail**: review customer/shipping/payment details, items, totals, discounts, notes, payment attempts, PayHere references, transaction IDs, refunds/returns, return requests, and event history; confirm, ship, deliver, or cancel orders. Online orders cannot be delivered until payment is paid. Admins can verify payments through PayHere, record manual reconciliation, record manual or provider-processed refunds/returns, approve/reject customer return requests, and link a refund to an approved return.
+- **Order detail**: review customer/shipping/payment details, items, totals, discounts, notes, payment attempts, PayHere references, transaction IDs, refunds/returns, return requests, and event history; confirm, ship, deliver, or cancel orders. Online orders cannot be delivered until payment is paid. Admins can verify payments through PayHere, record manual reconciliation, record manual or provider-processed refunds/returns, approve/reject customer return requests, mark approved returns completed to restock the returned items, and link a refund to an approved or completed return.
+- **Returns**: a global queue of return requests with status filters, return/order/customer search, selected item quantities, and linked refund status; open an order to review or complete a return.
 - **Cancellation and chargebacks**: cancellation restores stock and coupon usage once; paid cancellations keep the payment as paid for manual refund handling. Chargedback payments are shown as a distinct state.
 - **Products**: search/filter/paginate, activate or deactivate, delete, and edit.
 - **Product editor**: upload images (choose a primary image), set price, category and visibility, and manage size/color/SKU/stock variants.
@@ -246,7 +249,7 @@ Sign in at `/login` with an admin account to manage the store:
 - Guests keep their cart in localStorage; after login or registration it is merged into the server-side cart. Signed-in customers keep their cart across sessions and devices. Expired access tokens are refreshed automatically.
 - Checkout requires an account, validates prices and stock server-side, supports **Cash on Delivery** and optional **PayHere hosted online payment**, and accepts server-validated coupons. Online orders redirect to PayHere's secure checkout; the signed PayHere notification updates payment status. A flat shipping fee of LKR 350 is applied by default (configurable with `SHIPPING_FEE_LKR`).
 - Unpaid online orders have a configurable reservation window (`ONLINE_PAYMENT_RESERVATION_MINUTES`). Expired orders are cancelled, their reserved stock is released exactly once, and pending payment attempts are closed.
-- After ordering, customers see a confirmation and can review their orders at `/orders`. Order emails distinguish pending online payment from confirmed payment; a separate payment confirmation is sent only after server-side payment verification. After delivery, customers can request a return on the order page and see approval/rejection and linked refund status. Refund/return records are admin-managed. When SMTP is configured, status-update emails are also sent.
+- After ordering, customers see a confirmation and can review their orders at `/orders`. Order emails distinguish pending online payment from confirmed payment; a separate payment confirmation is sent only after server-side payment verification. After delivery, customers can select items and quantities to return, cancel a pending request, and see approval/rejection, restock, and linked refund status. Refund/return records are admin-managed. When SMTP is configured, return status emails are sent for requested, approved, rejected, completed, and cancelled returns.
 
 ## 🧪 Testing
 
@@ -260,7 +263,7 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-Coverage includes authentication and role guards, login rate limiting, catalog filters and slug lookup, cart stock caps and guest-cart merging, transactional order creation and stock decrement, coupon previews/discounts/usage rules, admin status transitions and cancellation restock, dashboard stats, reviews, wishlist privacy, upload validation, security headers, CORS, order date filters, mock online payments, PayHere signature/amount verification, chargebacks, duplicate/delayed notifications, stock reservation expiry, fulfillment guards, manual reconciliation, refund/return records, provider reconciliation/refund adapters, customer return requests and admin review/linking, and payment email timing.
+Coverage includes authentication and role guards, login rate limiting, catalog filters and slug lookup, cart stock caps and guest-cart merging, transactional order creation and stock decrement, coupon previews/discounts/usage rules, admin status transitions and cancellation restock, dashboard stats, reviews, wishlist privacy, upload validation, security headers, CORS, order date filters, mock online payments, PayHere signature/amount verification, chargebacks, duplicate/delayed notifications, stock reservation expiry, fulfillment guards, manual reconciliation, refund/return records, provider reconciliation/refund adapters, item-level customer return requests, quantity validation, cancellation and reapplication, completion restocking without double restock, the global admin return queue, and payment/return email timing.
 
 ### Frontend
 

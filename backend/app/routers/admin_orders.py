@@ -36,6 +36,7 @@ from app.services import returns as return_service
 from app.services.email import (
     send_order_status_update,
     send_payment_confirmation,
+    send_return_status_update,
 )
 
 OrderStatusFilter = Literal[
@@ -322,6 +323,7 @@ def review_order_return(
     order_id: int,
     return_id: int,
     payload: ReturnReviewRequest,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
@@ -333,9 +335,18 @@ def review_order_return(
             detail="Order not found",
         )
 
-    return return_service.review_return(
+    reviewed = return_service.review_return(
         db, current_user, order, return_id, payload
     )
+    background_tasks.add_task(
+        send_return_status_update,
+        order.contact_email,
+        order.id,
+        reviewed.id,
+        reviewed.status,
+        payload.note,
+    )
+    return reviewed
 
 
 @router.patch(

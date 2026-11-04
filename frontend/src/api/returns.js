@@ -14,3 +14,10 @@ export async function createOrderReturn(orderId, payload) {
   );
   return data;
 }
+
+export async function cancelOrderReturn(orderId, returnId) {
+  const { data } = await client.post(
+    `/orders/${orderId}/returns/${returnId}/cancel`
+  );
+  return data;
+}

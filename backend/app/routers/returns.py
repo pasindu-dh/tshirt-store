@@ -1,4 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    status,
+)
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -9,6 +15,7 @@ from app.schemas.return_request import (
     ReturnRequestOut,
 )
 from app.services import returns as return_service
+from app.services.email import send_return_status_update
 
 router = APIRouter(prefix="/orders", tags=["returns"])
 
@@ -48,10 +55,44 @@ def list_order_returns(
 def create_order_return(
     order_id: int,
     payload: ReturnRequestCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     order = _customer_order(db, current_user, order_id)
-    return return_service.create_return_request(
+    request = return_service.create_return_request(
         db, current_user, order, payload
     )
+    background_tasks.add_task(
+        send_return_status_update,
+        order.contact_email,
+        order.id,
+        request.id,
+        "requested",
+    )
+    return request
+
+
+@router.post(
+    "/{order_id}/returns/{return_id}/cancel",
+    response_model=ReturnRequestOut,
+)
+def cancel_order_return(
+    order_id: int,
+    return_id: int,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    order = _customer_order(db, current_user, order_id)
+    request = return_service.cancel_return(
+        db, current_user, order, return_id
+    )
+    background_tasks.add_task(
+        send_return_status_update,
+        order.contact_email,
+        order.id,
+        request.id,
+        "cancelled",
+    )
+    return request

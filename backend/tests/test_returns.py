@@ -11,9 +11,16 @@ def _add_to_cart(client, headers, product, quantity=1):
 
 
 def _create_order(
-    client, customer_auth, product, order_payload, payment_method="cod"
+    client,
+    customer_auth,
+    product,
+    order_payload,
+    payment_method="cod",
+    quantity=1,
 ):
-    _add_to_cart(client, customer_auth["headers"], product, 1)
+    _add_to_cart(
+        client, customer_auth["headers"], product, quantity
+    )
     response = client.post(
         "/orders",
         headers=customer_auth["headers"],
@@ -33,11 +40,27 @@ def _deliver_order(client, admin_auth, order):
         assert response.status_code == 200, response.text
 
 
-def _request_return(client, customer_auth, order, reason="Item does not fit."):
+def _request_return(
+    client,
+    customer_auth,
+    order,
+    reason="Item does not fit.",
+    items=None,
+):
     return client.post(
         f"/orders/{order['id']}/returns",
         headers=customer_auth["headers"],
-        json={"reason": reason, "notes": "Requested by test customer."},
+        json={
+            "reason": reason,
+            "notes": "Requested by test customer.",
+            "items": items
+            or [
+                {
+                    "order_item_id": order["items"][0]["id"],
+                    "quantity": 1,
+                }
+            ],
+        },
     )
 
 
@@ -300,3 +323,249 @@ def test_return_link_rejects_invalid_refund_and_customer_access(
         reason="Duplicate request.",
     )
     assert duplicate.status_code == 409
+
+
+def test_return_items_are_restocked_only_on_completion(
+    client, admin_auth, customer_auth, product, order_payload
+):
+    from app.database import SessionLocal
+    from app.models import ProductVariant
+
+    order = _create_order(
+        client,
+        customer_auth,
+        product,
+        order_payload,
+        quantity=2,
+    )
+    _deliver_order(client, admin_auth, order)
+    variant_id = product["variants"][0]["id"]
+
+    with SessionLocal() as db:
+        assert db.get(ProductVariant, variant_id).stock == 6
+
+    request = _request_return(
+        client,
+        customer_auth,
+        order,
+        items=[
+            {
+                "order_item_id": order["items"][0]["id"],
+                "quantity": 1,
+            }
+        ],
+    )
+    assert request.status_code == 201
+    request_id = request.json()["id"]
+    assert len(request.json()["items"]) == 1
+    assert request.json()["items"][0]["quantity"] == 1
+
+    approved = client.patch(
+        f"/admin/orders/{order['id']}/returns/{request_id}",
+        headers=admin_auth["headers"],
+        json={"status": "approved", "note": "Approved."},
+    )
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "approved"
+
+    with SessionLocal() as db:
+        assert db.get(ProductVariant, variant_id).stock == 6
+
+    completed = client.patch(
+        f"/admin/orders/{order['id']}/returns/{request_id}",
+        headers=admin_auth["headers"],
+        json={
+            "status": "completed",
+            "note": "Item received and inspected.",
+        },
+    )
+    assert completed.status_code == 200, completed.text
+    assert completed.json()["status"] == "completed"
+    assert completed.json()["stock_restocked_at"] is not None
+    assert completed.json()["items"][0]["restocked_at"] is not None
+
+    with SessionLocal() as db:
+        assert db.get(ProductVariant, variant_id).stock == 7
+
+    duplicate = client.patch(
+        f"/admin/orders/{order['id']}/returns/{request_id}",
+        headers=admin_auth["headers"],
+        json={"status": "completed", "note": "Again."},
+    )
+    assert duplicate.status_code == 409
+
+    with SessionLocal() as db:
+        assert db.get(ProductVariant, variant_id).stock == 7
+
+
+def test_customer_can_cancel_pending_return_and_reapply(
+    client, admin_auth, customer_auth, product, order_payload
+):
+    order = _create_order(
+        client, customer_auth, product, order_payload
+    )
+    _deliver_order(client, admin_auth, order)
+    request = _request_return(client, customer_auth, order).json()
+
+    cancelled = client.post(
+        f"/orders/{order['id']}/returns/{request['id']}/cancel",
+        headers=customer_auth["headers"],
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+
+    review_cancelled = client.patch(
+        f"/admin/orders/{order['id']}/returns/{request['id']}",
+        headers=admin_auth["headers"],
+        json={"status": "approved"},
+    )
+    assert review_cancelled.status_code == 409
+
+    reapplied = _request_return(
+        client,
+        customer_auth,
+        order,
+        reason="Second return request after cancellation.",
+    )
+    assert reapplied.status_code == 201
+    assert reapplied.json()["status"] == "requested"
+
+
+def test_return_item_quantity_and_ownership_validation(
+    client, admin_auth, customer_auth, product, order_payload
+):
+    order = _create_order(
+        client, customer_auth, product, order_payload
+    )
+    _deliver_order(client, admin_auth, order)
+    order_item_id = order["items"][0]["id"]
+
+    too_many = _request_return(
+        client,
+        customer_auth,
+        order,
+        items=[{"order_item_id": order_item_id, "quantity": 2}],
+    )
+    assert too_many.status_code == 400
+    assert "Only 1" in too_many.json()["detail"]
+
+    invalid_item = _request_return(
+        client,
+        customer_auth,
+        order,
+        items=[{"order_item_id": 999999, "quantity": 1}],
+    )
+    assert invalid_item.status_code == 400
+
+    duplicate_items = _request_return(
+        client,
+        customer_auth,
+        order,
+        items=[
+            {"order_item_id": order_item_id, "quantity": 1},
+            {"order_item_id": order_item_id, "quantity": 1},
+        ],
+    )
+    assert duplicate_items.status_code == 422
+
+    # A valid request still works after the rejected attempts.
+    valid = _request_return(client, customer_auth, order)
+    assert valid.status_code == 201
+
+
+def test_admin_global_return_queue(
+    client, admin_auth, customer_auth, product, order_payload
+):
+    order = _create_order(
+        client, customer_auth, product, order_payload
+    )
+    _deliver_order(client, admin_auth, order)
+    request = _request_return(client, customer_auth, order).json()
+
+    customer = client.get(
+        "/admin/returns", headers=customer_auth["headers"]
+    )
+    anonymous = client.get("/admin/returns")
+    assert customer.status_code == 403
+    assert anonymous.status_code == 401
+
+    listing = client.get(
+        "/admin/returns", headers=admin_auth["headers"]
+    )
+    assert listing.status_code == 200
+    assert listing.headers["X-Total-Count"] == "1"
+    item = listing.json()[0]
+    assert item["id"] == request["id"]
+    assert item["order_id"] == order["id"]
+    assert item["item_count"] == 1
+    assert item["order_contact_name"] == order["contact_name"]
+
+    filtered = client.get(
+        "/admin/returns",
+        headers=admin_auth["headers"],
+        params={"status": "requested"},
+    )
+    assert filtered.headers["X-Total-Count"] == "1"
+
+    no_matches = client.get(
+        "/admin/returns",
+        headers=admin_auth["headers"],
+        params={"search": "not-a-customer"},
+    )
+    assert no_matches.headers["X-Total-Count"] == "0"
+
+    by_email = client.get(
+        "/admin/returns",
+        headers=admin_auth["headers"],
+        params={"search": customer_auth["user"]["email"]},
+    )
+    assert by_email.headers["X-Total-Count"] == "1"
+
+
+def test_return_status_emails_are_scheduled(
+    client,
+    admin_auth,
+    customer_auth,
+    product,
+    order_payload,
+    monkeypatch,
+):
+    customer_calls = []
+    admin_calls = []
+    monkeypatch.setattr(
+        "app.routers.returns.send_return_status_update",
+        lambda *args: customer_calls.append(args),
+    )
+    monkeypatch.setattr(
+        "app.routers.admin_orders.send_return_status_update",
+        lambda *args: admin_calls.append(args),
+    )
+
+    order = _create_order(
+        client, customer_auth, product, order_payload
+    )
+    _deliver_order(client, admin_auth, order)
+    request = _request_return(client, customer_auth, order).json()
+    request_id = request["id"]
+
+    assert len(customer_calls) == 1
+    assert customer_calls[0][0] == order["contact_email"]
+    assert customer_calls[0][3] == "requested"
+
+    approved = client.patch(
+        f"/admin/orders/{order['id']}/returns/{request_id}",
+        headers=admin_auth["headers"],
+        json={"status": "approved", "note": "Approved by email test."},
+    )
+    assert approved.status_code == 200
+    assert len(admin_calls) == 1
+    assert admin_calls[0][3] == "approved"
+
+    completed = client.patch(
+        f"/admin/orders/{order['id']}/returns/{request_id}",
+        headers=admin_auth["headers"],
+        json={"status": "completed", "note": "Received."},
+    )
+    assert completed.status_code == 200
+    assert len(admin_calls) == 2
+    assert admin_calls[1][3] == "completed"
