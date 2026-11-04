@@ -2,10 +2,13 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { imageUrl } from "../../api/client";
 import {
+  createAdminRefund,
   getAdminOrder,
   getAdminOrderPayments,
   reconcileAdminPayment,
+  reconcileAdminPaymentWithProvider,
   updateAdminOrderStatus,
+  updateAdminRefund,
 } from "../../api/adminOrders";
 import OrderStatusBadge from "../../components/OrderStatusBadge";
 import { getApiError } from "../../utils/errors";
@@ -82,6 +85,18 @@ function AdminOrderDetail({ orderId }) {
   const [reconciling, setReconciling] = useState(false);
   const [reconcileError, setReconcileError] = useState("");
   const [reconcileMessage, setReconcileMessage] = useState("");
+  const [refundPaymentId, setRefundPaymentId] = useState("");
+  const [refundKind, setRefundKind] = useState("refund");
+  const [refundAmount, setRefundAmount] = useState("");
+  const [refundReason, setRefundReason] = useState("");
+  const [refundNotes, setRefundNotes] = useState("");
+  const [processWithProvider, setProcessWithProvider] = useState(false);
+  const [refunding, setRefunding] = useState(false);
+  const [refundError, setRefundError] = useState("");
+  const [refundMessage, setRefundMessage] = useState("");
+  const [providerVerifying, setProviderVerifying] = useState(null);
+  const [providerError, setProviderError] = useState("");
+  const [providerMessage, setProviderMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -125,6 +140,9 @@ function AdminOrderDetail({ orderId }) {
         setReconcilePaymentId(
           candidate ? String(candidate.id) : ""
         );
+        setRefundPaymentId(
+          candidate ? String(candidate.id) : ""
+        );
       })
       .catch((requestError) => {
         if (!cancelled) {
@@ -150,6 +168,110 @@ function AdminOrderDetail({ orderId }) {
     setPayments(data);
     setPaymentsError("");
     return data;
+  };
+
+  const handleProviderReconcile = async (payment) => {
+    setProviderVerifying(payment.id);
+    setProviderError("");
+    setProviderMessage("");
+
+    try {
+      await reconcileAdminPaymentWithProvider(
+        orderId,
+        payment.id
+      );
+      const refreshedOrder = await getAdminOrder(orderId);
+      setOrder(refreshedOrder);
+      await refreshPayments();
+      setProviderMessage("PayHere verification recorded.");
+    } catch (requestError) {
+      setProviderError(
+        getApiError(
+          requestError,
+          "Could not verify the payment with PayHere."
+        )
+      );
+    } finally {
+      setProviderVerifying(null);
+    }
+  };
+
+  const handleCreateRefund = async (event) => {
+    event.preventDefault();
+    setRefundError("");
+    setRefundMessage("");
+
+    if (!refundPaymentId) {
+      setRefundError("Select a payment attempt.");
+      return;
+    }
+
+    if (!refundAmount || Number(refundAmount) < 1) {
+      setRefundError("Enter a valid refund amount.");
+      return;
+    }
+
+    if (!refundReason.trim()) {
+      setRefundError("Enter a refund/return reason.");
+      return;
+    }
+
+    setRefunding(true);
+
+    try {
+      await createAdminRefund(orderId, refundPaymentId, {
+        kind: refundKind,
+        amount: Number(refundAmount),
+        reason: refundReason.trim(),
+        notes: refundNotes.trim(),
+        process_with_provider: processWithProvider,
+      });
+      const refreshedOrder = await getAdminOrder(orderId);
+      setOrder(refreshedOrder);
+      await refreshPayments();
+      setRefundAmount("");
+      setRefundReason("");
+      setRefundNotes("");
+      setProcessWithProvider(false);
+      setRefundMessage("Refund/return record saved.");
+    } catch (requestError) {
+      setRefundError(
+        getApiError(
+          requestError,
+          "Could not save the refund/return record."
+        )
+      );
+    } finally {
+      setRefunding(false);
+    }
+  };
+
+  const handleMarkRefunded = async (refund) => {
+    if (
+      !window.confirm(
+        `Mark refund #${refund.id} as completed? This should only be done after the money has been returned.`
+      )
+    ) {
+      return;
+    }
+
+    setRefundError("");
+    setRefundMessage("");
+
+    try {
+      await updateAdminRefund(orderId, refund.id, {
+        status: "refunded",
+        note: "Marked completed by admin.",
+      });
+      const refreshedOrder = await getAdminOrder(orderId);
+      setOrder(refreshedOrder);
+      await refreshPayments();
+      setRefundMessage("Refund marked completed.");
+    } catch (requestError) {
+      setRefundError(
+        getApiError(requestError, "Could not update the refund.")
+      );
+    }
   };
 
   const handleReconcile = async (event) => {
@@ -538,6 +660,61 @@ function AdminOrderDetail({ orderId }) {
                           : ""}
                       </p>
 
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleProviderReconcile(payment)
+                        }
+                        disabled={providerVerifying === payment.id}
+                        className="mt-3 w-full border border-cyan-500/50 text-cyan-400 py-2 rounded-lg text-xs font-semibold hover:bg-cyan-500/10 disabled:opacity-50"
+                      >
+                        {providerVerifying === payment.id
+                          ? "Verifying with PayHere..."
+                          : "Verify with PayHere"}
+                      </button>
+
+                      {payment.refunds.length > 0 && (
+                        <div className="mt-3 border-t border-gray-800 pt-2 space-y-2">
+                          <p className="text-xs font-medium text-gray-300">
+                            Refunds / returns
+                          </p>
+                          {payment.refunds.map((refund) => (
+                            <div
+                              key={refund.id}
+                              className="text-xs text-gray-400"
+                            >
+                              <p>
+                                <span className="capitalize text-gray-300">
+                                  {refund.kind}
+                                </span>{" "}
+                                · LKR {refund.amount} ·{" "}
+                                <span className="capitalize">
+                                  {refund.status}
+                                </span>
+                              </p>
+                              <p>{refund.reason}</p>
+                              {refund.provider_refund_id && (
+                                <p className="break-all">
+                                  Provider refund:{" "}
+                                  {refund.provider_refund_id}
+                                </p>
+                              )}
+                              {refund.status !== "refunded" && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleMarkRefunded(refund)
+                                  }
+                                  className="mt-1 text-cyan-400 hover:text-cyan-300"
+                                >
+                                  Mark refunded
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       <ul className="mt-3 space-y-1 border-t border-gray-800 pt-2">
                         {payment.events.map((event) => (
                           <li
@@ -557,6 +734,17 @@ function AdminOrderDetail({ orderId }) {
                   ))}
                 </div>
 
+                {providerError && (
+                  <p className="text-sm text-red-400 mt-3">
+                    {providerError}
+                  </p>
+                )}
+                {providerMessage && (
+                  <p className="text-sm text-green-400 mt-3">
+                    {providerMessage}
+                  </p>
+                )}
+
                 <form
                   onSubmit={handleReconcile}
                   className="mt-5 pt-4 border-t border-gray-800 space-y-3"
@@ -566,9 +754,9 @@ function AdminOrderDetail({ orderId }) {
                       Manual reconciliation
                     </h4>
                     <p className="text-xs text-gray-500 mt-1">
-                      Automatic PayHere lookup is not configured.
-                      Verify the transaction in the PayHere dashboard
-                      before recording the result here.
+                      If automatic verification is unavailable, verify
+                      the transaction in the PayHere dashboard and
+                      record the result here.
                     </p>
                   </div>
 
@@ -654,6 +842,131 @@ function AdminOrderDetail({ orderId }) {
                     {reconciling
                       ? "Recording..."
                       : "Record reconciliation"}
+                  </button>
+                </form>
+
+                <form
+                  onSubmit={handleCreateRefund}
+                  className="mt-5 pt-4 border-t border-gray-800 space-y-3"
+                >
+                  <div>
+                    <h4 className="text-sm font-semibold">
+                      Refund / return record
+                    </h4>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Record a refund or return against a paid payment.
+                      Provider processing requires the PayHere Merchant
+                      API; otherwise record it manually.
+                    </p>
+                  </div>
+
+                  <label className="block text-xs text-gray-300">
+                    Payment attempt
+                    <select
+                      value={refundPaymentId}
+                      onChange={(event) =>
+                        setRefundPaymentId(event.target.value)
+                      }
+                      className="mt-1 w-full p-2 rounded-lg bg-black border border-gray-700 outline-none focus:border-cyan-400 text-sm"
+                    >
+                      {payments.map((payment) => (
+                        <option
+                          key={payment.id}
+                          value={payment.id}
+                        >
+                          {payment.reference} ({payment.status})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block text-xs text-gray-300">
+                      Type
+                      <select
+                        value={refundKind}
+                        onChange={(event) =>
+                          setRefundKind(event.target.value)
+                        }
+                        className="mt-1 w-full p-2 rounded-lg bg-black border border-gray-700 outline-none focus:border-cyan-400 text-sm"
+                      >
+                        <option value="refund">Refund</option>
+                        <option value="return">Return</option>
+                      </select>
+                    </label>
+
+                    <label className="block text-xs text-gray-300">
+                      Amount (LKR)
+                      <input
+                        type="number"
+                        min="1"
+                        value={refundAmount}
+                        onChange={(event) =>
+                          setRefundAmount(event.target.value)
+                        }
+                        required
+                        className="mt-1 w-full p-2 rounded-lg bg-black border border-gray-700 outline-none focus:border-cyan-400 text-sm"
+                      />
+                    </label>
+                  </div>
+
+                  <label className="block text-xs text-gray-300">
+                    Reason
+                    <input
+                      value={refundReason}
+                      onChange={(event) =>
+                        setRefundReason(event.target.value)
+                      }
+                      maxLength={300}
+                      required
+                      className="mt-1 w-full p-2 rounded-lg bg-black border border-gray-700 outline-none focus:border-cyan-400 text-sm"
+                    />
+                  </label>
+
+                  <label className="block text-xs text-gray-300">
+                    Internal notes (optional)
+                    <textarea
+                      value={refundNotes}
+                      onChange={(event) =>
+                        setRefundNotes(event.target.value)
+                      }
+                      rows={2}
+                      maxLength={1000}
+                      className="mt-1 w-full p-2 rounded-lg bg-black border border-gray-700 outline-none focus:border-cyan-400 text-sm"
+                    />
+                  </label>
+
+                  <label className="flex items-start gap-2 text-xs text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={processWithProvider}
+                      onChange={(event) =>
+                        setProcessWithProvider(event.target.checked)
+                      }
+                      className="mt-0.5 accent-cyan-400"
+                    />
+                    Process through PayHere Merchant API
+                  </label>
+
+                  {refundError && (
+                    <p className="text-sm text-red-400">
+                      {refundError}
+                    </p>
+                  )}
+                  {refundMessage && (
+                    <p className="text-sm text-green-400">
+                      {refundMessage}
+                    </p>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={refunding}
+                    className="w-full bg-cyan-400 text-black py-2 rounded-lg font-semibold hover:bg-cyan-300 transition disabled:opacity-50"
+                  >
+                    {refunding
+                      ? "Saving..."
+                      : "Save refund / return"}
                   </button>
                 </form>
               </>

@@ -150,7 +150,9 @@ function OrderDetail({ orderId }) {
   const justPlaced = location.state?.justPlaced;
   const canPay =
     order.payment_method === "online" &&
-    !["paid", "chargedback"].includes(order.payment_status) &&
+    !["paid", "chargedback", "refunded"].includes(
+      order.payment_status
+    ) &&
     order.status !== "cancelled" &&
     !order.stock_released_at;
   const paymentTone =

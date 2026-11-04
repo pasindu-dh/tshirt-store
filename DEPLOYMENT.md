@@ -80,6 +80,8 @@ Run `python -m alembic upgrade head` before starting a new release/container.
 | `PAYMENT_PROVIDER` | `disabled`, `mock`, or `payhere`; use `payhere` in production |
 | `PAYMENT_CURRENCY` | `LKR` |
 | `PAYHERE_MERCHANT_ID`, `PAYHERE_MERCHANT_SECRET` | PayHere merchant credentials, kept in the secret manager |
+| `PAYHERE_API_APP_ID`, `PAYHERE_API_APP_SECRET` | Optional PayHere Merchant API key for retrieval/refund automation |
+| `PAYHERE_API_TIMEOUT_SECONDS` | Merchant API request timeout, default 10 |
 | `PAYHERE_SANDBOX` | `true` for sandbox testing, `false` for live payments |
 | `FRONTEND_BASE_URL` | Public frontend URL used for PayHere return/cancel redirects |
 | `BACKEND_PUBLIC_URL` | Public HTTPS API URL used to build the PayHere notify URL |
@@ -210,6 +212,8 @@ PAYMENT_PROVIDER=payhere
 PAYMENT_CURRENCY=LKR
 PAYHERE_MERCHANT_ID=...
 PAYHERE_MERCHANT_SECRET=...
+PAYHERE_API_APP_ID=...
+PAYHERE_API_APP_SECRET=...
 PAYHERE_SANDBOX=true
 FRONTEND_BASE_URL=https://your-frontend-host
 BACKEND_PUBLIC_URL=https://your-api-host
@@ -242,6 +246,30 @@ for admin history.
 Failed online payments can be retried from the order detail page until the
 reservation expires. Online orders cannot be marked delivered until their
 payment status is `paid`.
+
+### Merchant API reconciliation and refunds
+
+For automatic verification and refunds, create a PayHere API key under
+Settings → API Keys with the required Automated Charging/Refund permissions.
+Whitelist the backend domain and, for live calls, ask PayHere support to
+allowlist the server IP. Set `PAYHERE_API_APP_ID` and
+`PAYHERE_API_APP_SECRET`; the checkout merchant ID/secret alone are not enough.
+
+- Admin “Verify with PayHere” uses the Retrieval API by payment reference and
+  validates provider amount/currency before applying a status.
+- Admin refunds can be processed through the Refund API; full/partial amounts
+  are validated against the payment's remaining refundable balance.
+- If API credentials or provider access are unavailable, use the manual
+  reconciliation/refund records. The UI states when provider processing is
+  unavailable.
+- Refund and return records retain the admin, amount, reason, status, provider
+  reference, and timestamps.
+
+Full refunds set the payment/order payment status to `refunded`; partial
+refunds remain recorded against a paid payment. Dashboard revenue excludes
+fully refunded and chargedback delivered orders, but does not currently
+subtract partial refunds from gross revenue. Customer self-service return
+requests are not included; refunds/returns are recorded by admins.
 
 ### Stock reservation expiry
 
@@ -300,6 +328,7 @@ online payment.
 - [ ] Uploads directory private to the app and backed up.
 - [ ] SMTP password stored as a secret; sender domain configured and tested.
 - [ ] PayHere merchant secret stored as a secret; sandbox disabled for live.
+- [ ] PayHere Merchant API key restricted to the required permissions/domain/IP.
 - [ ] `APP_ENV=production`, `PAYMENT_PROVIDER=payhere`, and `PAYMENT_MOCK_ENABLED=false`.
 - [ ] `BACKEND_PUBLIC_URL/payments/payhere/notify` reachable over HTTPS.
 - [ ] Stock reservation expiry configured and, if the in-process sweeper is disabled, a cron job runs `python -m app.expire_reservations`.

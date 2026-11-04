@@ -8,7 +8,7 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
     app_name: str = "FURZY T-Shirt Store API"
-    app_version: str = "0.9.1"
+    app_version: str = "0.9.2"
     app_env: str = "development"
 
     # Default to an absolute path so the database location never depends on CWD.
@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     payhere_merchant_id: str = ""
     payhere_merchant_secret: str = ""
     payhere_sandbox: bool = True
+    payhere_api_app_id: str = ""
+    payhere_api_app_secret: str = ""
+    payhere_api_timeout_seconds: int = 10
     frontend_base_url: str = "http://127.0.0.1:5173"
     backend_public_url: str = "http://127.0.0.1:8005"
 
@@ -95,6 +98,21 @@ class Settings(BaseSettings):
 
         if provider == "mock":
             return self.payment_mock_enabled and not self.is_production
+
+        return False
+
+    @property
+    def payhere_api_enabled(self) -> bool:
+        provider = self.normalized_payment_provider
+
+        if provider == "mock":
+            return self.payment_mock_enabled and not self.is_production
+
+        if provider == "payhere":
+            return bool(
+                self.payhere_api_app_id.strip()
+                and self.payhere_api_app_secret.strip()
+            )
 
         return False
 

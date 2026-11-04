@@ -43,6 +43,43 @@ class PaymentEventOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class RefundOut(BaseModel):
+    id: int
+    order_id: int
+    payment_id: int
+    amount: int
+    kind: str
+    reason: str
+    notes: str
+    status: str
+    provider: str
+    provider_refund_id: str
+    requested_by_user_id: int | None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
+class RefundCreate(BaseModel):
+    kind: Literal["refund", "return"] = "refund"
+    amount: int = Field(ge=1)
+    reason: str = Field(min_length=3, max_length=300)
+    notes: str = Field(default="", max_length=1000)
+    process_with_provider: bool = False
+
+    model_config = {"extra": "forbid"}
+
+
+class RefundUpdate(BaseModel):
+    status: Literal["pending", "processing", "refunded", "failed"]
+    provider_refund_id: str = Field(default="", max_length=100)
+    note: str = Field(default="", max_length=500)
+
+    model_config = {"extra": "forbid"}
+
+
 class AdminPaymentOut(BaseModel):
     id: int
     provider: str
@@ -55,6 +92,7 @@ class AdminPaymentOut(BaseModel):
     updated_at: datetime
     paid_at: datetime | None
     events: list[PaymentEventOut]
+    refunds: list[RefundOut] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

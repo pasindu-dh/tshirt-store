@@ -10,18 +10,23 @@ from fastapi import (
     Response,
     status as http_status,
 )
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import require_admin
-from app.models import User
+from app.models import Payment, Refund, User
 from app.schemas.order import OrderOut, OrderStatusUpdate
 from app.schemas.payment import (
     AdminPaymentOut,
     ManualReconciliationRequest,
+    RefundCreate,
+    RefundOut,
+    RefundUpdate,
 )
 from app.services import admin_orders
 from app.services import payments as payment_service
+from app.services import refunds as refund_service
 from app.services.email import (
     send_order_status_update,
     send_payment_confirmation,
@@ -142,6 +147,146 @@ def reconcile_order_payment(
         )
 
     return result.payment
+
+
+@router.post(
+    "/{order_id}/payments/{payment_id}/reconcile-provider",
+    response_model=AdminPaymentOut,
+)
+def reconcile_order_payment_with_provider(
+    order_id: int,
+    payment_id: int,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    order = admin_orders.get_order(db, order_id)
+
+    if order is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Order not found",
+        )
+
+    try:
+        result = payment_service.reconcile_with_provider(
+            db, current_user, order, payment_id
+        )
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise
+
+    if result.newly_paid:
+        background_tasks.add_task(
+            send_payment_confirmation,
+            result.order.contact_email,
+            result.order.id,
+            result.order.contact_name,
+            result.order.total,
+            result.payment.reference,
+        )
+
+    return result.payment
+
+
+@router.get(
+    "/{order_id}/refunds",
+    response_model=list[RefundOut],
+)
+def list_order_refunds(
+    order_id: int,
+    db: Session = Depends(get_db),
+):
+    order = admin_orders.get_order(db, order_id)
+
+    if order is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Order not found",
+        )
+
+    return list(
+        db.scalars(
+            select(Refund)
+            .where(Refund.order_id == order.id)
+            .order_by(Refund.id.desc())
+        ).all()
+    )
+
+
+@router.post(
+    "/{order_id}/payments/{payment_id}/refunds",
+    response_model=RefundOut,
+    status_code=http_status.HTTP_201_CREATED,
+)
+def create_order_refund(
+    order_id: int,
+    payment_id: int,
+    payload: RefundCreate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    order = admin_orders.get_order(db, order_id)
+
+    if order is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Order not found",
+        )
+
+    payment = db.scalar(
+        select(Payment).where(
+            Payment.id == payment_id,
+            Payment.order_id == order.id,
+        )
+    )
+
+    if payment is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Payment not found for this order.",
+        )
+
+    return refund_service.create_refund(
+        db, current_user, order, payment, payload
+    )
+
+
+@router.patch(
+    "/{order_id}/refunds/{refund_id}",
+    response_model=RefundOut,
+)
+def update_order_refund(
+    order_id: int,
+    refund_id: int,
+    payload: RefundUpdate,
+    db: Session = Depends(get_db),
+):
+    order = admin_orders.get_order(db, order_id)
+
+    if order is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Order not found",
+        )
+
+    refund = db.scalar(
+        select(Refund).where(
+            Refund.id == refund_id,
+            Refund.order_id == order.id,
+        )
+    )
+
+    if refund is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Refund not found for this order.",
+        )
+
+    return refund_service.update_refund(db, order, refund, payload)
 
 
 @router.patch("/{order_id}/status", response_model=OrderOut)

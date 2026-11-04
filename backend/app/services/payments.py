@@ -5,11 +5,11 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
-from app.models import Order, Payment, User
+from app.models import Order, Payment, PaymentEvent, Refund, User
 from app.models.common import utcnow
 from app.schemas.payment import (
     ManualReconciliationRequest,
@@ -17,6 +17,7 @@ from app.schemas.payment import (
     PaymentSessionOut,
     PaymentStatusOut,
 )
+from app.services import payhere_api
 from app.services.payment_events import record_event
 
 logger = logging.getLogger("furzy.payments")
@@ -234,6 +235,12 @@ def create_session(
             detail="This order has a chargedback payment.",
         )
 
+    if order.payment_status == "refunded":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This order has been refunded.",
+        )
+
     reference = f"FURZY-{order.id}-{uuid4().hex[:12].upper()}"
     payment = Payment(
         order_id=order.id,
@@ -316,6 +323,12 @@ def complete_mock_payment(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This order has a chargedback payment.",
+        )
+
+    if order.payment_status == "refunded":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This order has been refunded.",
         )
 
     if order.status == "cancelled" or order.stock_released_at is not None:
@@ -656,9 +669,273 @@ def list_order_payments(
         db.scalars(
             select(Payment)
             .where(Payment.order_id == order_id)
-            .options(selectinload(Payment.events))
+            .options(
+                selectinload(Payment.events),
+                selectinload(Payment.refunds),
+            )
             .order_by(Payment.id.desc())
         ).all()
+    )
+
+
+def _load_payment(db: Session, payment_id: int) -> Payment | None:
+    return db.scalar(
+        select(Payment)
+        .where(Payment.id == payment_id)
+        .options(
+            selectinload(Payment.events),
+            selectinload(Payment.refunds),
+        )
+    )
+
+
+def reconcile_with_provider(
+    db: Session,
+    admin_user: User,
+    order: Order,
+    payment_id: int,
+) -> ReconciliationResult:
+    from fastapi import HTTPException, status
+
+    if not settings.payhere_api_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "PayHere Merchant API is not configured; use manual "
+                "reconciliation instead."
+            ),
+        )
+
+    locked_order = db.scalar(
+        select(Order)
+        .where(Order.id == order.id)
+        .with_for_update()
+    )
+
+    if locked_order is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found.",
+        )
+
+    order = locked_order
+    payment = db.scalar(
+        select(Payment)
+        .where(
+            Payment.id == payment_id,
+            Payment.order_id == order.id,
+        )
+        .with_for_update()
+    )
+
+    if payment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Payment not found for this order.",
+        )
+
+    try:
+        provider_payment = payhere_api.lookup_payment(
+            payment.reference,
+            expected_amount=payment.amount,
+            currency=payment.currency,
+        )
+    except payhere_api.PayHereApiError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
+    if (
+        provider_payment.order_id != payment.reference
+        or provider_payment.amount != Decimal(payment.amount)
+        or provider_payment.currency != payment.currency
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=(
+                "PayHere payment details do not match the local "
+                "payment record."
+            ),
+        )
+
+    provider_status = provider_payment.status
+    local_status = payment.status
+    newly_paid = False
+
+    if local_status in {"refunded", "chargedback"}:
+        if (
+            local_status == "refunded"
+            and provider_status != "REFUNDED"
+        ) or (
+            local_status == "chargedback"
+            and provider_status != "CHARGEBACKED"
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "PayHere status conflicts with the local terminal "
+                    "payment state."
+                ),
+            )
+
+    if provider_status == "RECEIVED":
+        if local_status not in {"paid", "refunded", "chargedback"}:
+            payment.status = "paid"
+            payment.provider_payment_id = (
+                provider_payment.payment_id
+                or payment.provider_payment_id
+            )
+
+            if payment.paid_at is None:
+                payment.paid_at = utcnow()
+
+            order.payment_status = "paid"
+            newly_paid = True
+            record_event(
+                db,
+                payment,
+                status="paid",
+                source="payhere_api",
+                status_code=provider_status,
+                provider_payment_id=payment.provider_payment_id,
+                note="Payment verified with PayHere retrieval.",
+                actor_user_id=admin_user.id,
+            )
+        elif local_status == "paid":
+            payment.provider_payment_id = (
+                provider_payment.payment_id
+                or payment.provider_payment_id
+            )
+    elif provider_status == "CHARGEBACKED":
+        if local_status != "chargedback":
+            payment.status = "chargedback"
+            order.payment_status = "chargedback"
+            record_event(
+                db,
+                payment,
+                status="chargedback",
+                source="payhere_api",
+                status_code=provider_status,
+                provider_payment_id=provider_payment.payment_id,
+                note="Chargeback verified with PayHere retrieval.",
+                actor_user_id=admin_user.id,
+            )
+    elif provider_status == "REFUNDED":
+        if local_status != "refunded":
+            payment.status = "refunded"
+            order.payment_status = "refunded"
+            record_event(
+                db,
+                payment,
+                status="refunded",
+                source="payhere_api",
+                status_code=provider_status,
+                provider_payment_id=provider_payment.payment_id,
+                note="Refund verified with PayHere retrieval.",
+                actor_user_id=admin_user.id,
+            )
+
+        completed_refunds = int(
+            db.scalar(
+                select(
+                    func.coalesce(func.sum(Refund.amount), 0)
+                ).where(
+                    Refund.payment_id == payment.id,
+                    Refund.status == "refunded",
+                )
+            )
+            or 0
+        )
+        open_refunds = list(
+            db.scalars(
+                select(Refund)
+                .where(
+                    Refund.payment_id == payment.id,
+                    Refund.status.in_(("pending", "processing")),
+                )
+                .order_by(Refund.id)
+            ).all()
+        )
+
+        for open_refund in open_refunds:
+            open_refund.status = "refunded"
+            open_refund.completed_at = utcnow()
+
+        if open_refunds:
+            db.flush()
+            completed_refunds = int(
+                db.scalar(
+                    select(
+                        func.coalesce(func.sum(Refund.amount), 0)
+                    ).where(
+                        Refund.payment_id == payment.id,
+                        Refund.status == "refunded",
+                    )
+                )
+                or 0
+            )
+
+        remaining = payment.amount - completed_refunds
+
+        if remaining > 0:
+            db.add(
+                Refund(
+                    order_id=order.id,
+                    payment_id=payment.id,
+                    amount=remaining,
+                    kind="refund",
+                    reason="Detected from PayHere retrieval.",
+                    notes=(
+                        "Created automatically during provider "
+                        "reconciliation."
+                    ),
+                    status="refunded",
+                    provider="payhere",
+                    provider_refund_id="",
+                    requested_by_user_id=admin_user.id,
+                    completed_at=utcnow(),
+                )
+            )
+    elif provider_status in {
+        "REFUND REQUESTED",
+        "REFUND PROCESSING",
+    }:
+        existing_event = db.scalar(
+            select(PaymentEvent.id).where(
+                PaymentEvent.payment_id == payment.id,
+                PaymentEvent.source == "payhere_api",
+                PaymentEvent.status_code == provider_status,
+            )
+        )
+
+        if existing_event is None:
+            record_event(
+                db,
+                payment,
+                status="refund_processing",
+                source="payhere_api",
+                status_code=provider_status,
+                provider_payment_id=provider_payment.payment_id,
+                note="PayHere reports a refund in progress.",
+                actor_user_id=admin_user.id,
+            )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="PayHere returned an unsupported payment status.",
+        )
+
+    payment.provider_payment_id = (
+        provider_payment.payment_id or payment.provider_payment_id
+    )
+    db.commit()
+    loaded = _load_payment(db, payment.id)
+
+    return ReconciliationResult(
+        payment=loaded or payment,
+        newly_paid=newly_paid,
+        order=order,
     )
 
 
@@ -770,7 +1047,10 @@ def reconcile_payment(
     loaded = db.scalar(
         select(Payment)
         .where(Payment.id == payment.id)
-        .options(selectinload(Payment.events))
+        .options(
+            selectinload(Payment.events),
+            selectinload(Payment.refunds),
+        )
     )
 
     return ReconciliationResult(

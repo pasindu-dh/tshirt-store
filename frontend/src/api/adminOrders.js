@@ -35,6 +35,47 @@ export async function reconcileAdminPayment(
   return data;
 }
 
+export async function reconcileAdminPaymentWithProvider(
+  orderId,
+  paymentId
+) {
+  const { data } = await client.post(
+    `/admin/orders/${orderId}/payments/${paymentId}/reconcile-provider`
+  );
+  return data;
+}
+
+export async function getAdminOrderRefunds(orderId) {
+  const { data } = await client.get(
+    `/admin/orders/${orderId}/refunds`
+  );
+  return data;
+}
+
+export async function createAdminRefund(
+  orderId,
+  paymentId,
+  payload
+) {
+  const { data } = await client.post(
+    `/admin/orders/${orderId}/payments/${paymentId}/refunds`,
+    payload
+  );
+  return data;
+}
+
+export async function updateAdminRefund(
+  orderId,
+  refundId,
+  payload
+) {
+  const { data } = await client.patch(
+    `/admin/orders/${orderId}/refunds/${refundId}`,
+    payload
+  );
+  return data;
+}
+
 export async function updateAdminOrderStatus(orderId, status) {
   const { data } = await client.patch(
     `/admin/orders/${orderId}/status`,
