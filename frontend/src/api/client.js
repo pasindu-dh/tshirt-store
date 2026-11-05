@@ -6,8 +6,21 @@ import {
   setStoredAuth,
 } from "./tokens";
 
+const configuredApiUrl = import.meta.env.VITE_API_URL?.replace(
+  /\/$/,
+  ""
+);
+
+if (import.meta.env.PROD && !configuredApiUrl) {
+  // Vercel must define VITE_API_URL before building. Keep the local
+  // fallback for development, but make a missing production value loud.
+  console.error(
+    "VITE_API_URL is not set for this production build; API calls will fall back to localhost."
+  );
+}
+
 export const API_URL =
-  import.meta.env.VITE_API_URL?.replace(/\/$/, "") || "http://127.0.0.1:8005";
+  configuredApiUrl || "http://127.0.0.1:8005";
 
 const client = axios.create({
   baseURL: API_URL,

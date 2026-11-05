@@ -18,6 +18,127 @@ adapter added in a later phase).
 HTTPS is provided by these platforms. Never serve the API over plain HTTP in
 production.
 
+## Render + Vercel + Neon blueprint
+
+The repository includes a `render.yaml` Blueprint and an updated
+`frontend/vercel.json` for this stack.
+
+### What the Blueprint creates
+
+- A Python web service named `furzy-api`, root directory `backend`
+- Python `3.13.16`
+- Build: `pip install -r requirements.txt`
+- Pre-deploy: `python -m alembic upgrade head`
+- Start: `uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips=*`
+- Health check: `/health/ready`
+- Persistent disk: `furzy-uploads`, mounted at `/var/data/uploads`
+- `UPLOADS_DIR=/var/data/uploads`
+
+The service uses the paid `0.5c-512mb` plan on purpose. Render free web
+services cannot attach a persistent disk, and since September 2025 free web
+services also block outbound SMTP ports 465 and 587. Port 25 is blocked on
+all plans. Use a paid instance for both uploads and email.
+
+### Required accounts and values
+
+1. A Neon project with a database and two connection strings:
+   - **Pooled** URL for `DATABASE_URL` (application runtime)
+   - **Direct** URL for `MIGRATION_DATABASE_URL` (Alembic)
+2. A Render Blueprint created from this repository.
+3. A Vercel project with root directory `frontend`.
+4. SMTP credentials for a provider that supports port 587 or 465.
+5. PayHere sandbox credentials for initial online-payment verification.
+
+Use the SQLAlchemy URL prefix `postgresql+psycopg://` for both Neon URLs.
+Keep `sslmode=require` in both. Add the Neon database, user, and password
+placeholders exactly as Neon provides them; never commit the URLs.
+
+### Deployment order
+
+1. Create the Neon database. Copy both the pooled and direct URLs.
+2. Create the Render Blueprint. Creating a Blueprint triggers its first
+   deploy, so do this only when you are ready; `autoDeployTrigger: "off"` in
+   the Blueprint only disables later automatic deploys. Render reads
+   `render.yaml` and prompts for every `sync: false` variable:
+   - `DATABASE_URL` — Neon pooled URL
+   - `MIGRATION_DATABASE_URL` — Neon direct URL
+   - `FRONTEND_ORIGINS` — set to the final Vercel origin, for example
+     `https://furzy.vercel.app` (no trailing slash). You can set this after
+     the first frontend deploy and redeploy the API.
+   - `FRONTEND_BASE_URL` — same Vercel origin
+   - `BACKEND_PUBLIC_URL` — the Render service URL, for example
+     `https://furzy-api.onrender.com`
+   - SMTP host, port, username, password, and from address
+   - PayHere merchant and Merchant API credentials
+   - Optional `ADMIN_ALERT_EMAILS`
+3. Let Render run the build and pre-deploy migration. The first deploy can
+   start even if PayHere credentials are not filled in yet, but online
+   payments stay disabled until they are.
+4. Add `ADMIN_EMAIL` (non-secret) and `ADMIN_PASSWORD` (secret) as temporary
+   Render environment variables, open the Render Shell, and seed the admin
+   once:
+   ```bash
+   python -m app.seed_admin
+   ```
+   Then remove `ADMIN_PASSWORD` from the Render environment. Keep
+   `ADMIN_EMAIL` because `check_production` uses it as a launch check. Do
+   **not** run `python -m app.seed`; that is demo catalog data.
+5. In Vercel, import the repository, set the root directory to `frontend`,
+   and add `VITE_API_URL=https://furzy-api.onrender.com` to Production (and
+   Preview if needed). Redeploy after changing it because Vite embeds the
+   value at build time.
+6. After the Vercel domain is known, set `FRONTEND_ORIGINS` and
+   `FRONTEND_BASE_URL` on Render to the exact Vercel origin(s), then redeploy
+   the API.
+7. Set `BACKEND_PUBLIC_URL` to the Render URL. PayHere notifications will be
+   sent to:
+   `https://furzy-api.onrender.com/payments/payhere/notify`.
+8. Run the production checks from the Render Shell:
+   ```bash
+   APP_ENV=production python -m app.check_production
+   python -m app.smoke_test --base-url https://furzy-api.onrender.com
+   ```
+
+### Neon and migrations
+
+Neon’s pooled endpoint runs PgBouncer in transaction mode. Schema migrations
+should use the direct endpoint, so keep the direct URL in
+`MIGRATION_DATABASE_URL`. `alembic/env.py` uses that URL when present and
+falls back to `DATABASE_URL` otherwise. The application keeps using the
+pooled URL in `DATABASE_URL`.
+
+The application engine uses `pool_pre_ping` and a five-minute connection
+recycle to survive Neon idle disconnects. A single API instance uses a small
+pool; tune `pool_size`/`max_overflow` in `app/database.py` if you add
+concurrency.
+
+If Neon is suspended, its first connection can take several seconds. Render’s
+health check times out after five seconds, so a cold database can make
+`/health/ready` fail. Keep the database active, or use a Neon compute setting
+that does not suspend, if you see readiness restarts.
+
+### Render disks and uploads
+
+Only files written under `/var/data/uploads` survive deploys and restarts.
+The health check verifies that directory is writable, and uploads are served
+from `/uploads`. Render snapshots disks daily and retains seven days of
+snapshots, but a disk-backed service cannot scale to multiple instances and
+deploys stop the old instance before starting the new one. For long-term
+durability or multiple instances, copy uploads to S3/Cloudinary and add an
+object-storage adapter.
+
+### PostgreSQL compatibility notes
+
+- Use the `postgresql+psycopg://` SQLAlchemy prefix; `postgres://` is not
+  accepted by SQLAlchemy 2.
+- Neon requires TLS; keep `sslmode=require`.
+- The admin-notification boolean default was corrected to a SQL boolean
+  default (`false`) so fresh PostgreSQL migrations accept it. SQLite accepts
+  the same expression.
+- Existing SQLite databases are unaffected; this project does not migrate
+  SQLite data into Neon. Start production from an empty Neon database and
+  run `alembic upgrade head`.
+
 ## 1. Prepare the database
 
 Create a PostgreSQL database and copy its connection URL. Use the psycopg 3
@@ -43,8 +164,12 @@ your real catalog through the admin panel or with a data-import script.
 
 - Root directory: `backend`
 - Build command: `pip install -r requirements.txt`
-- Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+- Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips=*`
 - Release command: `python -m alembic upgrade head`
+- Health check path: `/health/ready`
+
+The proxy flags let Uvicorn read Render’s `X-Forwarded-Proto` header so
+HTTPS detection and HSTS work correctly behind the platform proxy.
 
 ### Docker
 
@@ -65,6 +190,7 @@ The image includes a `HEALTHCHECK` against `/health/ready`.
 - `GET /health/ready` checks database connectivity and uploads-directory
   writability. It returns `503` when either check fails.
 - Configure the hosting platform's health check path as `/health/ready`.
+  The included `render.yaml` already sets this.
 - After deployment, run:
   ```bash
   cd backend
@@ -90,7 +216,8 @@ The image includes a `HEALTHCHECK` against `/health/ready`.
 
 | Variable | Notes |
 | --- | --- |
-| `DATABASE_URL` | PostgreSQL URL with `postgresql+psycopg://` |
+| `DATABASE_URL` | PostgreSQL URL with `postgresql+psycopg://`; use the Neon pooled URL when available |
+| `MIGRATION_DATABASE_URL` | Optional direct/non-pooled PostgreSQL URL used only by Alembic; recommended with Neon |
 | `APP_ENV` | Set to `production` in production; mock payments, weak/default JWT secrets, and wildcard CORS origins are rejected at startup there |
 | `JWT_SECRET` | Long random value, for example `python -c "import secrets; print(secrets.token_urlsafe(64))"` |
 | `FRONTEND_ORIGINS` | Comma-separated production frontend origins, no trailing slash |
@@ -179,10 +306,20 @@ instances, back the limiters with Redis or an edge rate-limit service.
 
 1. Import the repository.
 2. Set the project root to `frontend`.
-3. Framework preset: Vite; build command `npm run build`; output `dist`.
-4. Add `VITE_API_URL=https://your-api-host` (no trailing slash).
-5. Deploy. `frontend/vercel.json` rewrites SPA routes such as `/orders/12` and
-   `/admin/orders/3` to `index.html`.
+3. Framework preset: Vite; install command `npm ci`; build command
+   `npm run build`; output `dist`. These are also set in
+   `frontend/vercel.json`.
+4. Set Node.js to 22 (or newer); the project requires `>=22.12.0`.
+5. Add `VITE_API_URL=https://your-api-host` (no trailing slash) to the
+   Production environment, and to Preview if preview builds should call the
+   API. Vite embeds this value at build time, so redeploy after changing it.
+   The Vite config deliberately fails a Vercel build that is missing this
+   variable rather than shipping a build that calls localhost.
+6. Deploy. `frontend/vercel.json` rewrites SPA routes such as `/orders/12`
+   and `/admin/orders/3` to `index.html`, and adds security/cache headers.
+7. Add the exact Vercel origin to the backend `FRONTEND_ORIGINS`. Preview
+   deployments use different domains; add each preview origin you need or
+   test against the production domain.
 
 ### Netlify
 
@@ -361,6 +498,13 @@ can link an existing refund record to an approved or completed return. Status
 emails are sent for requested, approved, rejected, completed, and cancelled
 returns when SMTP is configured.
 
+PayHere may require outbound IP allowlisting for live Merchant API calls.
+Render services share regional outbound ranges by default; dedicated
+outbound IPs are a workspace feature. If PayHere cannot allowlist the shared
+ranges, use the manual reconciliation/refund workflow or an external
+static-IP proxy. Checkout notifications are inbound HTTPS and do not depend
+on the outbound IP.
+
 ### Stock reservation expiry
 
 Unpaid online orders reserve stock. `ONLINE_PAYMENT_RESERVATION_MINUTES`
@@ -398,9 +542,10 @@ consistent. Manual adjustments reject changes that would make stock negative.
 
 ### Manual payment reconciliation
 
-Automatic PayHere lookup is not configured. If a notification is missed,
-verify the transaction in the PayHere dashboard and use the admin Order detail
-→ Payment history form, or:
+Automatic PayHere lookup requires the Merchant API credentials described
+above. If they are not configured or a notification is missed, verify the
+transaction in the PayHere dashboard and use the admin Order detail →
+Payment history form, or:
 
 ```text
 POST /admin/orders/{order_id}/payments/{payment_id}/reconcile
@@ -436,8 +581,15 @@ online payment.
 
 - [ ] Strong `JWT_SECRET` and a new admin password; no `.env` in Git.
 - [ ] `FRONTEND_ORIGINS` limited to the real frontend origin(s).
+- [ ] `FRONTEND_BASE_URL` and `BACKEND_PUBLIC_URL` are the public HTTPS URLs.
 - [ ] HTTPS enforced by the host; HSTS is sent for HTTPS requests.
 - [ ] Database backups and SSL enabled.
+- [ ] `DATABASE_URL` uses Neon’s pooled URL (if used) with `sslmode=require`.
+- [ ] `MIGRATION_DATABASE_URL` uses Neon’s direct URL for Alembic.
+- [ ] Render Blueprint uses a paid plan with the uploads disk mounted at `/var/data/uploads` and `UPLOADS_DIR` matching.
+- [ ] Render health check is `/health/ready`; pre-deploy runs `python -m alembic upgrade head`.
+- [ ] Render `autoDeployTrigger` is intentional (`off` in the committed Blueprint); enable deployment when launch is approved.
+- [ ] Vercel `VITE_API_URL` points at the Render URL and the frontend has been redeployed after the value was set.
 - [ ] Uploads directory private to the app and backed up.
 - [ ] SMTP password stored as a secret; sender domain configured and tested for order, verification, reset, and admin alert email.
 - [ ] `EMAIL_VERIFICATION_REQUIRED`, `REVIEW_MODERATION_ENABLED`, and `ADMIN_EMAIL_ALERTS_ENABLED` set intentionally for launch.
@@ -453,9 +605,15 @@ online payment.
 - [ ] Stock reservation expiry configured and, if the in-process sweeper is disabled, a cron job runs `python -m app.expire_reservations`.
 - [ ] Login rate limiting sized for your traffic or moved to Redis.
 - [ ] Admin account verified with `python -m app.seed_admin` validation rules.
+- [ ] `ADMIN_PASSWORD` removed from the runtime environment after the one-time admin seed.
+- [ ] Demo catalog seed (`python -m app.seed`) was never run in production.
 - [ ] Host health check points to `/health/ready`; the included Docker health check is active if using the image.
+- [ ] PostgreSQL migrations were applied to a fresh Neon database with `alembic upgrade head` and completed without SQLite-specific errors.
 - [ ] `python -m app.smoke_test --base-url https://api.example.com` passes after deployment.
 - [ ] `APP_ENV=production` starts successfully with the final JWT secret and CORS origins, and fails with intentionally weak values.
 - [ ] `APP_ENV=production python -m app.check_production` passes (warnings reviewed) before the release.
 - [ ] Dependencies updated and `npm audit` / `pip-audit` reviewed.
 - [ ] `python -m pytest` and `npm test` green before deployment.
+- [ ] `npm run build` succeeds with the production `VITE_API_URL`.
+- [ ] A Render deploy/restart keeps uploaded files (disk persistence verified).
+- [ ] A rollback plan exists; migrations are backward-compatible and a Neon backup/snapshot is available.

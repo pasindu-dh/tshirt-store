@@ -72,6 +72,76 @@ def environment_checks(config: Settings) -> list[Check]:
             )
         )
 
+    migration_url = config.alembic_database_url.strip()
+    migration_url_lower = migration_url.lower()
+
+    if config.migration_database_url.strip():
+        checks.append(
+            _result(
+                migration_url_lower.startswith(
+                    "postgresql+psycopg://"
+                ),
+                "MIGRATION_DATABASE_URL",
+                (
+                    "direct migration URL configured"
+                    if migration_url_lower.startswith(
+                        "postgresql+psycopg://"
+                    )
+                    else "must use postgresql+psycopg://"
+                ),
+            )
+        )
+
+        if migration_url_lower.startswith(
+            "postgresql+psycopg://"
+        ):
+            checks.append(
+                Check(
+                    "PASS"
+                    if "sslmode=" in migration_url_lower
+                    else "WARN",
+                    "MIGRATION_DATABASE_SSL",
+                    (
+                        "sslmode is configured"
+                        if "sslmode=" in migration_url_lower
+                        else "add sslmode=require when the provider "
+                        "supports it"
+                    ),
+                )
+            )
+            checks.append(
+                Check(
+                    "WARN"
+                    if "-pooler" in migration_url_lower
+                    else "PASS",
+                    "MIGRATION_DATABASE_POOLING",
+                    (
+                        "migration URL uses a pooled endpoint; use the "
+                        "direct Neon URL for Alembic"
+                        if "-pooler" in migration_url_lower
+                        else "migration URL is not pooled"
+                    ),
+                )
+            )
+    elif "-pooler" in database_url:
+        checks.append(
+            Check(
+                "WARN",
+                "MIGRATION_DATABASE_URL",
+                "DATABASE_URL uses a pooled Neon endpoint; set the "
+                "direct connect URL here so Alembic migrations do not "
+                "run through PgBouncer",
+            )
+        )
+    else:
+        checks.append(
+            Check(
+                "PASS",
+                "MIGRATION_DATABASE_URL",
+                "not set; Alembic falls back to DATABASE_URL",
+            )
+        )
+
     checks.append(
         _result(
             len(config.jwt_secret) >= 32

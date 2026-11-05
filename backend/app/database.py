@@ -14,6 +14,16 @@ engine_options: dict = {}
 
 if settings.database_url.startswith("sqlite"):
     engine_options["connect_args"] = {"check_same_thread": False}
+else:
+    # Managed PostgreSQL providers (including Neon) close idle
+    # connections. Verify pooled connections before use and recycle them
+    # periodically. The small pool suits a single API instance.
+    engine_options.update(
+        pool_pre_ping=True,
+        pool_recycle=300,
+        pool_size=5,
+        max_overflow=5,
+    )
 
 engine = create_engine(settings.database_url, **engine_options)
 

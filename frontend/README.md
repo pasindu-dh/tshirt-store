@@ -1,16 +1,43 @@
-# React + Vite
+# FURZY frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19 + Vite storefront and admin UI for the FURZY T-Shirt Store API.
 
-Currently, two official plugins are available:
+## Local development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```bash
+npm install
+npm run dev
+```
 
-## React Compiler
+The API defaults to `http://127.0.0.1:8005`. Set `VITE_API_URL` in a local
+`.env` file to use another backend:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+VITE_API_URL=http://127.0.0.1:8005
+```
 
-## Expanding the ESLint configuration
+## Checks
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+npm test
+npm run lint
+npm run build
+```
+
+## Vercel deployment
+
+- Root directory: `frontend`
+- Framework: Vite
+- Install: `npm ci --include=dev`
+- Build: `npm run build`
+- Output: `dist`
+- Node.js: 22.12 or newer
+
+Set `VITE_API_URL` in the Vercel project environment to the public Render API
+URL, for example `https://furzy-api.onrender.com`. Vite embeds this value at
+build time, so redeploy after changing it.
+
+`vercel.json` rewrites SPA routes to `index.html`, adds security headers, and
+caches hashed assets. After the Vercel domain is known, add the exact origin
+to the backend `FRONTEND_ORIGINS`; preview deployments need their own exact
+origins because wildcard CORS is rejected in production.

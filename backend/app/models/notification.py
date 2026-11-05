@@ -1,7 +1,13 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Integer, String
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Integer,
+    String,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -21,7 +27,10 @@ class AdminNotification(Base):
         String(200), default="", server_default=""
     )
     is_read: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default="0", index=True
+        Boolean,
+        default=False,
+        server_default=text("false"),
+        index=True,
     )
     read_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True

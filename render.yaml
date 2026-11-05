@@ -1,0 +1,84 @@
+services:
+  - type: web
+    name: furzy-api
+    runtime: python
+    # Paid plan: required for a persistent disk and outbound SMTP
+    # (Render free web services block SMTP ports 465 and 587).
+    plan: 0.5c-512mb
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: 'uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"'
+    healthCheckPath: /health/ready
+    preDeployCommand: python -m alembic upgrade head
+    autoDeployTrigger: "off"
+    disk:
+      name: furzy-uploads
+      mountPath: /var/data/uploads
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.16"
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: MIGRATION_DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_ORIGINS
+        sync: false
+      - key: FRONTEND_BASE_URL
+        sync: false
+      - key: BACKEND_PUBLIC_URL
+        sync: false
+      - key: UPLOADS_DIR
+        value: /var/data/uploads
+      - key: SHIPPING_FEE_LKR
+        value: "350"
+      - key: RETURN_WINDOW_DAYS
+        value: "30"
+      - key: ONLINE_PAYMENT_RESERVATION_MINUTES
+        value: "30"
+      - key: STOCK_RESERVATION_SWEEP_ENABLED
+        value: "true"
+      - key: STOCK_RESERVATION_SWEEP_SECONDS
+        value: "60"
+      - key: EMAIL_VERIFICATION_REQUIRED
+        value: "false"
+      - key: REVIEW_MODERATION_ENABLED
+        value: "false"
+      - key: ADMIN_EMAIL_ALERTS_ENABLED
+        value: "true"
+      - key: ADMIN_ALERT_EMAILS
+        value: ""
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        sync: false
+      - key: SMTP_USE_TLS
+        value: "true"
+      - key: PAYMENT_PROVIDER
+        value: payhere
+      - key: PAYMENT_CURRENCY
+        value: LKR
+      - key: PAYMENT_MOCK_ENABLED
+        value: "false"
+      - key: PAYHERE_SANDBOX
+        value: "true"
+      - key: PAYHERE_MERCHANT_ID
+        sync: false
+      - key: PAYHERE_MERCHANT_SECRET
+        sync: false
+      - key: PAYHERE_API_APP_ID
+        sync: false
+      - key: PAYHERE_API_APP_SECRET
+        sync: false
+      - key: PAYHERE_API_TIMEOUT_SECONDS
+        value: "10"

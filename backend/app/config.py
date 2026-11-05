@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     # Default to an absolute path so the database location never depends on CWD.
     database_url: str = f"sqlite:///{(BACKEND_DIR / 'store.db').as_posix()}"
 
+    # Optional direct/non-pooled database URL used only by Alembic.
+    # Neon recommends a direct connection for migrations; the app can keep
+    # using a pooled URL in DATABASE_URL.
+    migration_database_url: str = ""
+
     # Uploaded product images.
     uploads_dir: str = str(BACKEND_DIR / "uploads")
     max_upload_bytes: int = 5 * 1024 * 1024
@@ -103,10 +108,17 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [
-            origin.strip()
+            origin.strip().rstrip("/")
             for origin in self.frontend_origins.split(",")
             if origin.strip()
         ]
+
+    @property
+    def alembic_database_url(self) -> str:
+        return (
+            self.migration_database_url.strip()
+            or self.database_url
+        )
 
     @property
     def admin_alert_recipient_list(self) -> list[str]:

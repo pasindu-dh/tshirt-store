@@ -93,6 +93,72 @@ def test_unsafe_defaults_are_reported(tmp_path):
     } <= failed
 
 
+def test_origin_trailing_slash_is_normalized(tmp_path):
+    config = _production_settings(
+        tmp_path,
+        frontend_origins="https://shop.example.com/",
+    )
+    assert config.cors_origins == ["https://shop.example.com"]
+    checks = environment_checks(config)
+    origins = next(
+        check
+        for check in checks
+        if check.name == "FRONTEND_ORIGINS"
+    )
+    assert origins.status == "PASS"
+
+
+def test_pooled_neon_url_requires_a_direct_migration_url(
+    tmp_path,
+):
+    pooled = (
+        "postgresql+psycopg://user:pass@"
+        "ep-cool-name-pooler.us-east-2.aws.neon.tech/"
+        "furzy?sslmode=require"
+    )
+    config = _production_settings(
+        tmp_path, database_url=pooled
+    )
+    checks = environment_checks(config)
+    migration = next(
+        check
+        for check in checks
+        if check.name == "MIGRATION_DATABASE_URL"
+    )
+    assert migration.status == "WARN"
+    assert "pooled" in migration.detail
+
+    direct = (
+        "postgresql+psycopg://user:pass@"
+        "ep-cool-name.us-east-2.aws.neon.tech/"
+        "furzy?sslmode=require"
+    )
+    configured = _production_settings(
+        tmp_path,
+        database_url=pooled,
+        migration_database_url=direct,
+    )
+    checks = environment_checks(configured)
+    migration = next(
+        check
+        for check in checks
+        if check.name == "MIGRATION_DATABASE_URL"
+    )
+    ssl_check = next(
+        check
+        for check in checks
+        if check.name == "MIGRATION_DATABASE_SSL"
+    )
+    assert migration.status == "PASS"
+    assert ssl_check.status == "PASS"
+    pooling = next(
+        check
+        for check in checks
+        if check.name == "MIGRATION_DATABASE_POOLING"
+    )
+    assert pooling.status == "PASS"
+
+
 def test_payhere_sandbox_configuration_checks(tmp_path):
     good = _production_settings(
         tmp_path,

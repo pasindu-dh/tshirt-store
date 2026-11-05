@@ -1,7 +1,7 @@
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import create_engine, pool
 
 import app.models  # noqa: F401  (registers all models on Base.metadata)
 from app.config import settings
@@ -9,20 +9,23 @@ from app.database import Base
 
 config = context.config
 
-# Use the same database URL as the application.
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Use a direct URL for migrations when configured. This avoids
+# configparser percent-interpolation issues with database passwords and
+# lets Neon users keep a pooled URL for the application while migrating
+# through the direct endpoint.
+database_url = settings.alembic_database_url
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
-is_sqlite = settings.database_url.startswith("sqlite")
+is_sqlite = database_url.startswith("sqlite")
 
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
     context.configure(
-        url=config.get_main_option("sqlalchemy.url"),
+        url=database_url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -36,9 +39,8 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
+    connectable = create_engine(
+        database_url,
         poolclass=pool.NullPool,
     )
 

@@ -69,6 +69,7 @@ tshirt-store/
 │   └── vite.config.js
 │
 ├── .github/workflows/ci.yml
+├── render.yaml          # Render Blueprint for the API + persistent uploads disk
 └── DEPLOYMENT.md
 ```
 
@@ -82,6 +83,7 @@ The backend serves the API and static images for the products.
    ```bash
    cd backend
    ```
+   Python 3.13 is recommended (the deployment Blueprint pins 3.13.16).
 2. Install the required Python packages (it is recommended to use a virtual environment):
    ```bash
    pip install -r requirements.txt
@@ -120,6 +122,7 @@ The frontend runs on Vite and communicates with the FastAPI backend.
    ```bash
    cd frontend
    ```
+   Node.js 22.12 or newer is required by Vite 8.
 2. Install the Node dependencies:
    ```bash
    npm install
@@ -357,4 +360,11 @@ The disposable backend must be started with `PAYMENT_PROVIDER=mock` and `PAYMENT
 
 ## 🚢 Deployment
 
-See [`DEPLOYMENT.md`](DEPLOYMENT.md) for the production checklist and step-by-step instructions for Render/Railway, PostgreSQL, Vercel/Netlify, Docker, CI, and uploads. GitHub Actions runs backend tests, frontend lint/unit/build, and the Playwright journey on every push and pull request.
+The repository includes a Render Blueprint (`render.yaml`) for the API and
+`frontend/vercel.json` for the frontend. The recommended stack is Render for
+the FastAPI API, Vercel for the React frontend, and Neon PostgreSQL for the
+database. See [`DEPLOYMENT.md`](DEPLOYMENT.md) for the production checklist,
+the Render/Vercel/Neon step-by-step, PostgreSQL and Neon connection guidance,
+persistent uploads, SMTP constraints, PayHere sandbox verification, Docker,
+CI, and launch checks. GitHub Actions runs backend tests, frontend
+lint/unit/build, and the Playwright journey on every push and pull request.
