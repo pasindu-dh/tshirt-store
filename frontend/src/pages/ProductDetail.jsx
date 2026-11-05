@@ -7,7 +7,11 @@ import {
   useParams,
 } from "react-router-dom";
 import { imageUrl } from "../api/client";
-import { getProductBySlug } from "../api/products";
+import {
+  getProductBySlug,
+  getRelatedProducts,
+} from "../api/products";
+import ProductCard from "../components/ProductCard";
 import ProductReviews from "../components/ProductReviews";
 import useAuth from "../hooks/useAuth";
 import useCart from "../hooks/useCart";
@@ -37,6 +41,7 @@ function ProductDetail({ slug }) {
   const navigate = useNavigate();
 
   const [product, setProduct] = useState(null);
+  const [related, setRelated] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notFound, setNotFound] = useState(false);
@@ -86,6 +91,24 @@ function ProductDetail({ slug }) {
       cancelled = true;
     };
   }, [slug]);
+
+  useEffect(() => {
+    if (!product) return undefined;
+
+    let cancelled = false;
+
+    getRelatedProducts(product.id, 4)
+      .then((items) => {
+        if (!cancelled) setRelated(items);
+      })
+      .catch(() => {
+        if (!cancelled) setRelated([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [product]);
 
   const colors = useMemo(() => {
     if (!product) return [];
@@ -480,6 +503,25 @@ function ProductDetail({ slug }) {
         <div className="mt-14">
           <ProductReviews productId={product.id} />
         </div>
+
+        {related.length > 0 && (
+          <section
+            aria-labelledby="related-heading"
+            className="mt-14"
+          >
+            <h2
+              id="related-heading"
+              className="text-2xl font-bold"
+            >
+              You may also like
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mt-6">
+              {related.map((item) => (
+                <ProductCard key={item.id} product={item} />
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );

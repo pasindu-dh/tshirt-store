@@ -15,6 +15,7 @@ from app.database import Base
 from app.models.common import utcnow
 
 if TYPE_CHECKING:
+    from app.models.product import Product
     from app.models.user import User
 
 
@@ -36,6 +37,12 @@ class Review(Base):
     rating: Mapped[int] = mapped_column(Integer)
     title: Mapped[str] = mapped_column(String(120), default="")
     comment: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(
+        String(20),
+        default="published",
+        server_default="published",
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow
     )
@@ -44,3 +51,4 @@ class Review(Base):
     )
 
     user: Mapped["User"] = relationship()
+    product: Mapped["Product"] = relationship()

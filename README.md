@@ -110,7 +110,7 @@ The backend serves the API and static images for the products.
 
    Product images uploaded through the admin panel are stored in `backend/uploads/` (created automatically and git-ignored) and served from `/uploads`. Uploads are verified by Pillow: the file must actually contain a JPEG, PNG, or WebP image, not just claim that content type. Files are limited to 5 MB and 40 megapixels.
 
-   Login attempts are rate-limited in memory (5 failed attempts per account and 20 per IP in a 15-minute window). Successful logins reset the account/IP counters. Multi-worker deployments should move this to Redis.
+   Login attempts are rate-limited in memory (5 failed attempts per account and 20 per IP in a 15-minute window), and password-reset requests are limited to 3 per account and 15 per IP in the same window. Successful logins and completed resets clear the relevant counters. Multi-worker deployments should move these limiters to Redis.
 
 ### 2. Frontend Setup
 
@@ -131,7 +131,7 @@ The frontend runs on Vite and communicates with the FastAPI backend.
    ```
    *The terminal will output the local URL (usually `http://localhost:5173`) where you can view the application.*
 
-   Frontend routes: `/` (home), `/shop`, `/product/:slug`, `/about`, `/contact`, `/login`, `/register`, `/forbidden`, `/checkout` (signed-in), `/orders` and `/orders/:orderId` (signed-in), `/wishlist` (signed-in), and the admin area (`/admin`, `/admin/orders`, `/admin/orders/:orderId`, `/admin/customers`, `/admin/customers/:customerId`, `/admin/returns`, `/admin/reports`, `/admin/reports/products`, `/admin/inventory`, `/admin/products`, `/admin/products/new`, `/admin/products/:id/edit`, `/admin/categories`, `/admin/coupons`). The admin area requires the `admin` role.
+   Frontend routes: `/` (home), `/shop`, `/product/:slug`, `/about`, `/contact`, `/login`, `/register`, `/forgot-password`, `/reset-password`, `/verify-email`, `/forbidden`, `/checkout` (signed-in), `/orders` and `/orders/:orderId` (signed-in), `/wishlist` (signed-in), and the admin area (`/admin`, `/admin/orders`, `/admin/orders/:orderId`, `/admin/customers`, `/admin/customers/:customerId`, `/admin/returns`, `/admin/refunds`, `/admin/reviews`, `/admin/reports`, `/admin/reports/products`, `/admin/inventory`, `/admin/products`, `/admin/products/new`, `/admin/products/:id/edit`, `/admin/categories`, `/admin/coupons`, `/admin/shipping-methods`). The admin area requires the `admin` role.
 
 ## 🔗 API Endpoints
 
@@ -141,19 +141,25 @@ The frontend runs on Vite and communicates with the FastAPI backend.
   - Returns the `X-Total-Count` header with the total number of matching products.
 - `GET /products/{id}`: Product detail (active products only).
 - `GET /products/slug/{slug}`: Product detail by slug (active products only), used by the storefront product page.
+- `GET /products/{id}/related`: Active related products for the storefront recommendation section. Same-category products are returned first, then the rest of the catalog fills the optional `limit` (1–12).
 - `GET /categories`: List product categories.
 - `GET /images/{filename}`: Serves static images for the T-shirts.
 - `GET /`: Basic backend status endpoint.
 - `GET /health/live`: Liveness check; returns `{"status": "ok"}` without touching the database.
 - `GET /health/ready`: Readiness check for the database connection and writable uploads directory; returns `503` and per-check status when unready.
 
-### Authentication
-- `POST /auth/register`: Create a customer account and return access + refresh tokens.
-- `POST /auth/login`: OAuth2 password-form login (`username` is the email). Also enables the **Authorize** button in `/docs`. Repeated failed attempts return `429` with `Retry-After`; deactivated accounts with valid credentials return `403`.
-- `POST /auth/refresh`: Exchange a refresh token for a new token pair.
-- `GET /auth/me`: Return the current authenticated user.
+### Authentication and account recovery
+- `POST /auth/register`: Create a customer account and return access + refresh tokens. When SMTP is configured, a verification email is sent.
+- `POST /auth/login`: OAuth2 password-form login (`username` is the email). Also enables the **Authorize** button in `/docs`. Repeated failed attempts return `429` with `Retry-After`; deactivated accounts with valid credentials return `403`. When `EMAIL_VERIFICATION_REQUIRED=true`, unverified accounts must verify before signing in.
+- `POST /auth/refresh`: Exchange a refresh token for a new token pair. Password resets invalidate every previously issued access/refresh token.
+- `GET /auth/me`: Return the current authenticated user, including `email_verified`.
+- `GET /auth/config`: Public flags for `email_verification_required`, `email_verification_available` (SMTP configured), and `password_reset_available`.
+- `POST /auth/verify-email`: Consume a single-use verification token and mark the address verified.
+- `POST /auth/verify-email/resend`: Send a new verification link. The response is always generic to avoid account enumeration.
+- `POST /auth/password/forgot`: Request a password reset link. Same generic response whether or not the account exists; rate-limited per account and IP.
+- `POST /auth/password/reset`: Consume a single-use reset token, change the password, and invalidate existing sessions.
 
-> The frontend silently refreshes an expired access token on a `401` and retries the request. If the refresh token is also invalid, the session is cleared and the user is signed out.
+> Verification and reset tokens are stored only as SHA-256 hashes and expire after the configured window. The frontend silently refreshes an expired access token on a `401` and retries the request. If the refresh token is also invalid, the session is cleared and the user is signed out.
 
 ### Cart (authenticated)
 > All cart endpoints require a bearer token. Guests keep their cart in localStorage and merge it after signing in.
@@ -191,10 +197,15 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 - `PATCH /admin/orders/{id}/refunds/{refund_id}`: Update a pending/processing/failed refund, including marking it completed after manual processing.
 
 ### Reviews
-- `GET /reviews/product/{id}`: Public review list with count and average rating for an active product.
-- `POST /reviews/product/{id}`: Create the signed-in customer's review (`rating` 1–5, optional `title`/`comment`); one review per customer per product.
-- `PUT /reviews/{id}`: Edit your own review.
+- `GET /reviews/product/{id}`: Public review list with count and average rating for an active product. Only published reviews count toward the average; a signed-in caller also receives their own review in `my_review`, including `pending` or `rejected` state.
+- `POST /reviews/product/{id}`: Create the signed-in customer's review (`rating` 1–5, optional `title`/`comment`); one review per customer per product. With `REVIEW_MODERATION_ENABLED=true`, new reviews start as `pending`.
+- `PUT /reviews/{id}`: Edit your own review. Moderation re-applies to edited content.
 - `DELETE /reviews/{id}`: Delete your own review; admins can delete any review for moderation.
+
+### Admin review moderation
+- `GET /admin/reviews`: Paginated moderation queue with optional `status` (`pending`, `published`, `rejected`), `search` (product, customer, or review text), and `rating` filters; returns `X-Total-Count`.
+- `PATCH /admin/reviews/{id}`: Set the review status to `pending`, `published`, or `rejected`.
+- `DELETE /admin/reviews/{id}`: Delete a review.
 
 ### Wishlist (authenticated)
 - `GET /wishlist`: The signed-in customer's saved products.
@@ -225,6 +236,7 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 - `GET /admin/orders/{id}`: Full order detail for any customer order.
 - `PATCH /admin/orders/{id}`: Correct customer contact, shipping address, or internal notes while the order is `pending` or `confirmed`; each actual change is recorded in the order audit history.
 - `GET /admin/orders/{id}/audit`: Customer/shipping edit history with actor, timestamp, and field-level before/after values.
+- `GET /admin/orders/{id}/activity`: Consolidated order timeline combining placement, status changes, detail edits, payment events, refunds, returns, restocks, and stock release, with actors and timestamps.
 - `PATCH /admin/orders/{id}/status`: Advance an order through `pending → confirmed → shipped → delivered`, or cancel from `pending`/`confirmed`. Online orders must be paid before they can be delivered. Cancelling restores reserved stock/coupon usage once; delivering marks COD payment as paid. Status changes send an email when SMTP is configured.
 - `GET /admin/returns`: Global, paginated return queue with optional `status` and `search` filters (return/order number, customer name/email, or reason); returns `X-Total-Count`.
 - `GET /admin/orders/{id}/returns`: Return requests for the order.
@@ -234,7 +246,7 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 - `POST /admin/orders/{id}/payments/{payment_id}/reconcile`: Record a manually verified paid/failed/cancelled/chargedback result. The admin and note are preserved in the payment event history.
 - `POST /admin/orders/{id}/payments/{payment_id}/reconcile-provider`: Verify the payment against the PayHere Retrieval API and apply the provider-confirmed status.
 - `POST /admin/orders/{id}/payments/{payment_id}/refunds` and `PATCH /admin/orders/{id}/refunds/{refund_id}`: Record refunds/returns, optionally process via the PayHere Refund API, and complete or fail them with an audit trail.
-- `GET /admin/notifications`: Paginated admin notification feed with `unread_only`; new-order, new-return, and low-stock alerts; returns `X-Total-Count`.
+- `GET /admin/notifications`: Paginated admin notification feed with `unread_only`; new-order, new-return, and low-stock alerts; returns `X-Total-Count`. When SMTP is configured and email alerts are enabled, the same alerts are also emailed to active admin accounts (or `ADMIN_ALERT_EMAILS`).
 - `GET /admin/notifications/unread-count`: Unread notification count for the admin badge.
 - `PATCH /admin/notifications/{id}/read` and `POST /admin/notifications/read-all`: Mark one or all notifications as read.
 - `GET /admin/stats`: Dashboard aggregates — gross/net revenue from delivered orders, completed and pending refunds, open returns, order status counts, threshold-based low-stock/out-of-stock variants, and product/category totals.
@@ -268,6 +280,8 @@ Sign in at `/login` with an admin account to manage the store:
 - **Order detail**: review customer/shipping/payment details, items, totals, discounts, notes, payment attempts, PayHere references, transaction IDs, refunds/returns, return requests, and event history; confirm, ship, deliver, or cancel orders. Pending/confirmed orders can have customer contact, shipping address, and internal notes corrected, with field-level edit history. Online orders cannot be delivered until payment is paid. Admins can verify payments through PayHere, record manual reconciliation, record manual or provider-processed refunds/returns, approve/reject customer return requests, mark approved returns completed to restock the returned items, and link a refund to an approved or completed return.
 - **Returns**: a global queue of return requests with status filters, return/order/customer search, selected item quantities, and linked refund status; open an order to review or complete a return, or export returns/refunds CSV.
 - **Refunds**: a global refund/return-payment queue with status/type/date/search filters, customer and payment-reference context, order links, and CSV export.
+- **Reviews**: a moderation queue with status, rating, and text/customer filters. Approve, reject, return to pending, or delete reviews; pending reviews stay hidden from the storefront and rating averages.
+- **Order activity**: every order detail page includes a consolidated timeline of placement, status transitions, detail edits, payment events, refunds, returns/restocks, and stock release, with actor and timestamp.
 - **Reports**: a date-filtered financial report with daily or monthly grouping, gross/net revenue, completed and pending refunds, delivered order counts, return totals/units, and refund/return status breakdowns. A product-performance report shows top products/categories by revenue and units, completed return rates, current stock levels, and stock value.
 - **Inventory**: low-stock alerts based on each variant's configurable threshold, inline stock adjustments with a reason, a filterable audit history covering initial stock, orders, cancellations, expiries, return restocks, variant removal, product deletion, and manual changes, plus movement CSV export.
 - **Cancellation and chargebacks**: cancellation restores stock and coupon usage once; paid cancellations keep the payment as paid for manual refund handling. Chargedback payments are shown as a distinct state.
@@ -282,8 +296,9 @@ Sign in at `/login` with an admin account to manage the store:
 
 - **Shop** uses server-side search, category filtering, price/name sorting, and paginated infinite scrolling.
 - Product cards open a product detail page at `/product/:slug` and include a wishlist heart.
-- The detail page includes an image gallery, color and size selection, live stock status, a stock-aware add-to-cart button, a wishlist toggle, and customer reviews with average ratings and one-review-per-customer editing.
+- The detail page includes an image gallery, color and size selection, live stock status, a stock-aware add-to-cart button, a wishlist toggle, customer reviews with average ratings and one-review-per-customer editing, and a "You may also like" section with same-category recommendations.
 - Guests keep their cart in localStorage; after login or registration it is merged into the server-side cart. Signed-in customers keep their cart across sessions and devices. Expired access tokens are refreshed automatically.
+- Customers can request a password reset from the login page and verify their email from a single-use link. Unverified accounts see a storefront banner when verification is required.
 - Checkout requires an account, validates prices and stock server-side, supports **Cash on Delivery** and optional **PayHere hosted online payment**, and accepts server-validated coupons. Customers choose from active admin-managed delivery methods; the selected method name and fee are snapshotted onto the order. If no active method exists, checkout falls back to the flat `SHIPPING_FEE_LKR` value. Online orders redirect to PayHere's secure checkout; the signed PayHere notification updates payment status.
 - Unpaid online orders have a configurable reservation window (`ONLINE_PAYMENT_RESERVATION_MINUTES`). Expired orders are cancelled, their reserved stock is released exactly once, and pending payment attempts are closed.
 - After ordering, customers see a confirmation and can review their orders at `/orders`. Order emails distinguish pending online payment from confirmed payment; a separate payment confirmation is sent only after server-side payment verification. After delivery, customers see the return policy and deadline, select a structured reason plus items/quantities, cancel a pending request, and see approval/rejection, restock, and linked refund status. The configurable return window (`RETURN_WINDOW_DAYS`, default 30; `0` disables it) is enforced server-side from the recorded delivery timestamp. Refund/return records are admin-managed. When SMTP is configured, return status emails are sent for requested, approved, rejected, completed, and cancelled returns.
@@ -293,13 +308,15 @@ Sign in at `/login` with an admin account to manage the store:
 - `GET /health/live` verifies the API process is serving requests.
 - `GET /health/ready` checks database connectivity and uploads-directory writability; unready responses use HTTP `503`.
 - Production startup rejects a weak/default `JWT_SECRET` and wildcard `FRONTEND_ORIGINS` when `APP_ENV=production`. Mock payments are already rejected in production.
+- `python -m app.check_production` validates the production database URL, secrets, CORS, PayHere credentials, SMTP sender, admin email, and uploads directory, and checks database connectivity. Run it with the production environment loaded; it never prints secrets.
 - The Docker image includes a health check against `/health/ready`.
 - Run the API smoke test against a running backend:
   ```bash
   cd backend
   python -m app.smoke_test --base-url http://127.0.0.1:8005
   ```
-  It checks liveness, readiness, catalog, payment config, and — when admin credentials are available from `SMOKE_ADMIN_EMAIL`/`SMOKE_ADMIN_PASSWORD` or the backend settings — admin login, identity, and dashboard access. It never prints credentials or tokens. Use `--skip-admin` for public-endpoint-only checks.
+  It checks liveness, readiness, catalog, payment config, account config, and — when admin credentials are available from `SMOKE_ADMIN_EMAIL`/`SMOKE_ADMIN_PASSWORD` or the backend settings — admin login, identity, dashboard, and review-queue access. It never prints credentials or tokens. Use `--skip-admin` for public-endpoint-only checks.
+- Validate PayHere sandbox/live configuration with `python -m app.payhere_check --check-api`; add `--reference` and `--amount` to retrieve a sandbox payment. It never prints merchant secrets.
 
 ## 🧪 Testing
 
@@ -313,7 +330,7 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-Coverage includes authentication and role guards, login rate limiting, catalog filters and slug lookup, cart stock caps and guest-cart merging, transactional order creation and stock decrement, coupon previews/discounts/usage rules, admin status transitions and cancellation restock, dashboard stats, reviews, wishlist privacy, upload validation, security headers, CORS, order date filters, mock online payments, PayHere signature/amount verification, chargebacks, duplicate/delayed notifications, stock reservation expiry, fulfillment guards, manual reconciliation, refund/return records, provider reconciliation/refund adapters, item-level customer return requests, quantity validation, cancellation and reapplication, completion restocking without double restock, the global admin return queue, and payment/return email timing. Financial reporting tests cover partial and full refunds, pending refund totals, date-filtered gross/net revenue, day/month grouping, return totals and returned units, dashboard net revenue, and admin-only access. Inventory tests cover stock movements for orders, cancellations, and return restocks; manual adjustments and validation; per-variant thresholds; movement filters and access guards; product deletion snapshots; and variant-ID preservation when editing products. Customer-management tests cover directory filtering, admin/customer access separation, order and return aggregates, lifetime gross/net spend, pending and completed refunds, and customer detail order/return histories. Product-performance tests cover units/revenue aggregation, completed return rates, category rollups, current stock value, date filtering, limits, and admin-only access. CSV export tests cover order line items, customer aggregates, return/refund rows, stock movements, financial periods, filters, headers, download metadata, access guards, and date/status validation. Health/config tests cover liveness, database/uploads readiness, unready responses, and production JWT/CORS validation. Return-policy tests cover the public policy endpoint, delivery timestamps, structured reason codes, late-request rejection, and disabling the window. Notification tests cover order/return alerts, low-stock crossing and re-arming, unread counts, single/all mark-read, filtering, and admin-only access. Order-edit tests cover pending/confirmed edits, validation, field-level audit history, no-op edits, shipment lockout, and admin-only access. Customer-account tests cover deactivation blocking login/existing tokens/refresh, reactivation, directory status fields, and admin-only access controls. Refund-queue tests cover global listing, customer/payment context, status/type/date/search filters, pagination, and admin-only access. Catalog-import tests cover full CSV export, new-product creation, existing-product/variant updates without removing omitted variants, dry-run no-write behavior, row validation, duplicate SKU/variant errors, category/slug errors, stock movement creation, and admin-only access. Shipping tests cover admin CRUD/validation, public active-method ordering, selected-method order totals/snapshots, inactive/missing method rejection, cart default fees, and flat-fee fallback.
+Coverage includes authentication and role guards, login rate limiting, catalog filters and slug lookup, cart stock caps and guest-cart merging, transactional order creation and stock decrement, coupon previews/discounts/usage rules, admin status transitions and cancellation restock, dashboard stats, reviews, wishlist privacy, upload validation, security headers, CORS, order date filters, mock online payments, PayHere signature/amount verification, chargebacks, duplicate/delayed notifications, stock reservation expiry, fulfillment guards, manual reconciliation, refund/return records, provider reconciliation/refund adapters, item-level customer return requests, quantity validation, cancellation and reapplication, completion restocking without double restock, the global admin return queue, and payment/return email timing. Financial reporting tests cover partial and full refunds, pending refund totals, date-filtered gross/net revenue, day/month grouping, return totals and returned units, dashboard net revenue, and admin-only access. Inventory tests cover stock movements for orders, cancellations, and return restocks; manual adjustments and validation; per-variant thresholds; movement filters and access guards; product deletion snapshots; and variant-ID preservation when editing products. Customer-management tests cover directory filtering, admin/customer access separation, order and return aggregates, lifetime gross/net spend, pending and completed refunds, and customer detail order/return histories. Product-performance tests cover units/revenue aggregation, completed return rates, category rollups, current stock value, date filtering, limits, and admin-only access. CSV export tests cover order line items, customer aggregates, return/refund rows, stock movements, financial periods, filters, headers, download metadata, access guards, and date/status validation. Health/config tests cover liveness, database/uploads readiness, unready responses, and production JWT/CORS validation. Return-policy tests cover the public policy endpoint, delivery timestamps, structured reason codes, late-request rejection, and disabling the window. Notification tests cover order/return alerts, low-stock crossing and re-arming, unread counts, single/all mark-read, filtering, and admin-only access. Order-edit tests cover pending/confirmed edits, validation, field-level audit history, no-op edits, shipment lockout, and admin-only access. Customer-account tests cover deactivation blocking login/existing tokens/refresh, reactivation, directory status fields, and admin-only access controls. Refund-queue tests cover global listing, customer/payment context, status/type/date/search filters, pagination, and admin-only access. Catalog-import tests cover full CSV export, new-product creation, existing-product/variant updates without removing omitted variants, dry-run no-write behavior, row validation, duplicate SKU/variant errors, category/slug errors, stock movement creation, and admin-only access. Shipping tests cover admin CRUD/validation, public active-method ordering, selected-method order totals/snapshots, inactive/missing method rejection, cart default fees, and flat-fee fallback. Account-security tests cover email verification/resend, login enforcement, password reset, token rotation, generic responses, and reset rate limiting. Review-moderation tests cover pending reviews, hidden public counts, owner visibility, admin filtering, approval/rejection, re-moderation after edits, and access guards. Related-product tests cover same-category priority, catalog fill, active-only filtering, limits, and missing products. Order-activity tests cover consolidated placement/status/edit/return events, actors, ordering, and admin-only access. Admin-alert tests cover recipient defaults/overrides, new-order alert dispatch, disabling alerts, and email-link formatting.
 
 ### Frontend
 
@@ -324,11 +341,11 @@ npm run lint
 npm run build
 ```
 
-Frontend tests cover cart/error utilities, return-window helpers, sales chart date-series helpers, reusable order-status/CSV-export components, Navbar/ProductCard behavior, and the admin customer/returns/reports/inventory pages.
+Frontend tests cover cart/error utilities, return-window helpers, sales chart date-series helpers, reusable order-status/CSV-export components, Navbar/ProductCard behavior, account recovery/verification pages, the admin review moderation queue, the order activity timeline, and the admin customer/returns/reports/inventory pages.
 
 ### End-to-end
 
-The Playwright suite includes a full guest-cart → login → checkout → coupon → online payment → order → review → wishlist → history journey, plus an admin smoke test that verifies readiness and loads the dashboard, orders, customers, returns, reports, product-performance, and inventory pages. It needs a running backend with an admin account and the mock payment provider enabled.
+The Playwright suite includes a full guest-cart → login → checkout → coupon → online payment → order → review → wishlist → history journey, plus an admin smoke test that verifies readiness and loads the dashboard, orders, customers, notifications, returns, refunds, reviews, reports, product-performance, inventory, catalog-import, and shipping-method pages. It needs a running backend with an admin account and the mock payment provider enabled.
 
 ```bash
 cd frontend

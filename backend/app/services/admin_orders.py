@@ -264,6 +264,16 @@ def update_status(
         order.delivered_at = utcnow()
 
     order.status = new_status
+    db.add(
+        OrderAuditEvent(
+            order_id=order.id,
+            actor_user_id=actor_user_id,
+            action="status_changed",
+            changes=json.dumps(
+                {"from": current_status, "to": new_status}
+            ),
+        )
+    )
 
     try:
         db.commit()

@@ -89,6 +89,47 @@ def get_category(db: Session, category_id: int) -> Category | None:
     return db.get(Category, category_id)
 
 
+def list_related_products(
+    db: Session, product: Product, *, limit: int = 4
+) -> list[Product]:
+    """Recommend same-category products, then fill from the catalog."""
+
+    products: list[Product] = []
+
+    if product.category_id is not None:
+        products = list(
+            db.scalars(
+                _product_query(
+                    [
+                        Product.is_active.is_(True),
+                        Product.id != product.id,
+                        Product.category_id == product.category_id,
+                    ]
+                )
+                .order_by(Product.created_at.desc(), Product.id.desc())
+                .limit(limit)
+            ).unique().all()
+        )
+
+    if len(products) >= limit:
+        return products
+
+    excluded_ids = [product.id, *(item.id for item in products)]
+    filler = db.scalars(
+        _product_query(
+            [
+                Product.is_active.is_(True),
+                Product.id.notin_(excluded_ids),
+            ]
+        )
+        .order_by(Product.created_at.desc(), Product.id.desc())
+        .limit(limit - len(products))
+    ).unique().all()
+    products.extend(filler)
+
+    return products
+
+
 def create_product(
     db: Session,
     payload: ProductCreate,

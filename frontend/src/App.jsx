@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState } from "react";
 import { Route, Routes } from "react-router-dom";
 import Cart from "./components/Cart";
+import EmailVerificationBanner from "./components/EmailVerificationBanner";
 import Navbar from "./components/Navbar";
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -11,6 +12,9 @@ const About = lazy(() => import("./pages/About"));
 const Checkout = lazy(() => import("./pages/Checkout"));
 const Contact = lazy(() => import("./pages/Contact"));
 const Forbidden = lazy(() => import("./pages/Forbidden"));
+const ForgotPassword = lazy(
+  () => import("./pages/ForgotPassword")
+);
 const Home = lazy(() => import("./pages/Home"));
 const Login = lazy(() => import("./pages/Login"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -18,7 +22,11 @@ const OrderDetail = lazy(() => import("./pages/OrderDetail"));
 const Orders = lazy(() => import("./pages/Orders"));
 const ProductDetail = lazy(() => import("./pages/ProductDetail"));
 const Register = lazy(() => import("./pages/Register"));
+const ResetPassword = lazy(
+  () => import("./pages/ResetPassword")
+);
 const Shop = lazy(() => import("./pages/Shop"));
+const VerifyEmail = lazy(() => import("./pages/VerifyEmail"));
 const Wishlist = lazy(() => import("./pages/Wishlist"));
 const AdminCatalogImport = lazy(
   () => import("./pages/admin/AdminCatalogImport")
@@ -51,6 +59,9 @@ const AdminRefunds = lazy(
 );
 const AdminReports = lazy(() => import("./pages/admin/AdminReports"));
 const AdminReturns = lazy(() => import("./pages/admin/AdminReturns"));
+const AdminReviews = lazy(
+  () => import("./pages/admin/AdminReviews")
+);
 const AdminShippingMethods = lazy(
   () => import("./pages/admin/AdminShippingMethods")
 );
@@ -88,6 +99,7 @@ function App() {
 
       <div className="relative z-10 bg-black text-white min-h-screen pt-20">
         <Navbar search={search} setSearch={setSearch} />
+        <EmailVerificationBanner />
         <Cart />
 
         <main id="main-content" tabIndex={-1}>
@@ -135,6 +147,18 @@ function App() {
               />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              <Route
+                path="/forgot-password"
+                element={<ForgotPassword />}
+              />
+              <Route
+                path="/reset-password"
+                element={<ResetPassword />}
+              />
+              <Route
+                path="/verify-email"
+                element={<VerifyEmail />}
+              />
               <Route path="/forbidden" element={<Forbidden />} />
               <Route
                 path="/admin"
@@ -164,6 +188,7 @@ function App() {
                 />
                 <Route path="returns" element={<AdminReturns />} />
                 <Route path="refunds" element={<AdminRefunds />} />
+                <Route path="reviews" element={<AdminReviews />} />
                 <Route path="reports" element={<AdminReports />} />
                 <Route
                   path="reports/products"

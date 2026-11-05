@@ -116,6 +116,19 @@ def run_smoke_checks(
             .get("provider", "ok")
         ),
     )
+    check(
+        "account config",
+        lambda: (
+            "email_verification_required"
+            in expect_json(
+                "/auth/config",
+                predicate=lambda data: (
+                    "password_reset_available" in data
+                ),
+            )
+            and "ok"
+        ),
+    )
 
     email = (
         os.environ.get("SMOKE_ADMIN_EMAIL", "").strip()
@@ -197,6 +210,16 @@ def run_smoke_checks(
             "admin stats",
             lambda: (
                 authed_json("/admin/stats") is not None
+                and "ok"
+            ),
+        )
+        check(
+            "admin reviews",
+            lambda: (
+                isinstance(
+                    authed_json("/admin/reviews?limit=1"),
+                    list,
+                )
                 and "ok"
             ),
         )

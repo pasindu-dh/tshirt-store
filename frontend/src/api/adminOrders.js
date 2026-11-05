@@ -34,6 +34,13 @@ export async function getAdminOrderAudit(orderId) {
   return data;
 }
 
+export async function getAdminOrderActivity(orderId) {
+  const { data } = await client.get(
+    `/admin/orders/${orderId}/activity`
+  );
+  return data;
+}
+
 export async function getAdminOrderPayments(orderId) {
   const { data } = await client.get(
     `/admin/orders/${orderId}/payments`

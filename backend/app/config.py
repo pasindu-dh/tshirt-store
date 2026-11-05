@@ -9,7 +9,7 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
     app_name: str = "FURZY T-Shirt Store API"
-    app_version: str = "0.18.0"
+    app_version: str = "0.19.0"
     app_env: str = "development"
 
     # Default to an absolute path so the database location never depends on CWD.
@@ -39,6 +39,21 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
 
+    # Customer account recovery and verification. Verification is only
+    # enforced at login when this is true. Both features need SMTP.
+    email_verification_required: bool = False
+    email_verification_token_hours: int = Field(
+        default=48, ge=1, le=720
+    )
+    password_reset_token_minutes: int = Field(
+        default=60, ge=5, le=1440
+    )
+
+    # Customer reviews. When moderation is enabled, new and edited
+    # reviews start as pending and are hidden from the storefront until
+    # an admin publishes them.
+    review_moderation_enabled: bool = False
+
     # SMTP order notifications. Leave SMTP_HOST empty to disable sending.
     smtp_host: str = ""
     smtp_port: int = 587
@@ -46,6 +61,11 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from_email: str = ""
     smtp_use_tls: bool = True
+
+    # Email copies of admin alerts. Recipients default to every active
+    # admin account when ADMIN_ALERT_EMAILS is empty.
+    admin_email_alerts_enabled: bool = True
+    admin_alert_emails: str = ""
 
     # Online payments. PAYMENT_PROVIDER can be "disabled", "mock", or
     # "payhere". Mock mode is for tests/local development only.
@@ -87,6 +107,21 @@ class Settings(BaseSettings):
             for origin in self.frontend_origins.split(",")
             if origin.strip()
         ]
+
+    @property
+    def admin_alert_recipient_list(self) -> list[str]:
+        return [
+            email.strip()
+            for email in self.admin_alert_emails.split(",")
+            if email.strip()
+        ]
+
+    @property
+    def smtp_configured(self) -> bool:
+        return bool(
+            self.smtp_host.strip()
+            and self.smtp_from_email.strip()
+        )
 
     @property
     def normalized_payment_provider(self) -> str:

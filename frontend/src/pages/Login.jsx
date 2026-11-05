@@ -82,6 +82,15 @@ function Login() {
             />
           </label>
 
+          <div className="text-right -mt-2">
+            <Link
+              to="/forgot-password"
+              className="text-sm text-gray-400 hover:text-cyan-400"
+            >
+              Forgot password?
+            </Link>
+          </div>
+
           {error && <p className="text-red-400 text-sm">{error}</p>}
 
           <button

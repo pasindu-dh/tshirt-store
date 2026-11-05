@@ -174,6 +174,15 @@ def _request_json(
         ) from exc
 
 
+def verify_credentials() -> None:
+    """Acquire a Merchant API token to validate the configured key."""
+
+    if _is_mock():
+        return
+
+    _get_access_token()
+
+
 def lookup_payment(
     reference: str,
     *,

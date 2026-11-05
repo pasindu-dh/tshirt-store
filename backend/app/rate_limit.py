@@ -65,3 +65,13 @@ login_account_limiter = LoginRateLimiter(
 login_ip_limiter = LoginRateLimiter(
     max_attempts=20, window_seconds=15 * 60
 )
+
+# Password reset requests are rate-limited per account and per IP. Every
+# request counts, because the endpoint intentionally hides whether an
+# account exists.
+password_reset_account_limiter = LoginRateLimiter(
+    max_attempts=3, window_seconds=15 * 60
+)
+password_reset_ip_limiter = LoginRateLimiter(
+    max_attempts=15, window_seconds=15 * 60
+)

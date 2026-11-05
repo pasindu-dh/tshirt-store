@@ -75,7 +75,8 @@ function ProductReviews({ productId }) {
   }, [productId]);
 
   const myReview = user
-    ? summary.items.find((review) => review.user_id === user.id)
+    ? (summary.my_review ??
+      summary.items.find((review) => review.user_id === user.id))
     : null;
 
   const reload = async () => {
@@ -113,12 +114,22 @@ function ProductReviews({ productId }) {
     setMessage("");
 
     try {
+      let saved;
+
       if (editing && myReview) {
-        await updateReview(myReview.id, form);
-        setMessage("Your review was updated.");
+        saved = await updateReview(myReview.id, form);
+        setMessage(
+          saved.status === "pending"
+            ? "Your updated review is awaiting moderation."
+            : "Your review was updated."
+        );
       } else {
-        await createReview(productId, form);
-        setMessage("Thanks for reviewing this product.");
+        saved = await createReview(productId, form);
+        setMessage(
+          saved.status === "pending"
+            ? "Thanks! Your review is awaiting moderation."
+            : "Thanks for reviewing this product."
+        );
       }
 
       setEditing(false);
@@ -233,6 +244,12 @@ function ProductReviews({ productId }) {
             <h3 className="text-lg font-semibold">
               {editing ? "Edit your review" : "Write a review"}
             </h3>
+            {editing && myReview?.status !== "published" && (
+              <p className="text-xs text-gray-500 mt-1">
+                Edited reviews may need moderator approval before
+                they appear publicly.
+              </p>
+            )}
 
             {!user ? (
               <p className="text-sm text-gray-400 mt-3">
@@ -250,6 +267,18 @@ function ProductReviews({ productId }) {
                 <p className="text-sm text-gray-400">
                   You already reviewed this product.
                 </p>
+                {myReview.status === "pending" && (
+                  <p className="text-xs text-yellow-400">
+                    Your review is awaiting moderation and is not
+                    public yet.
+                  </p>
+                )}
+                {myReview.status === "rejected" && (
+                  <p className="text-xs text-red-400">
+                    Your review was not published. Edit it to
+                    resubmit for review.
+                  </p>
+                )}
                 <div className="flex gap-3">
                   <button
                     type="button"

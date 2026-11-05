@@ -41,7 +41,7 @@ def _send_email(to_email: str, subject: str, body: str) -> bool:
 
         return True
     except Exception:
-        logger.exception("Could not send an order notification email.")
+        logger.exception("Could not send an email notification.")
         return False
 
 
@@ -165,3 +165,73 @@ def send_order_status_update(
             "FURZY"
         ),
     )
+
+
+def send_email_verification(
+    to_email: str,
+    name: str,
+    verify_url: str,
+    expires_hours: int,
+) -> bool:
+    return _send_email(
+        to_email,
+        "Verify your FURZY email address",
+        (
+            f"Hi {name},\n\n"
+            "Confirm your FURZY account email address by opening the "
+            "link below:\n\n"
+            f"{verify_url}\n\n"
+            f"This link expires in {expires_hours} hours. If you did not "
+            "create an account, you can ignore this message.\n\n"
+            "FURZY"
+        ),
+    )
+
+
+def send_password_reset(
+    to_email: str,
+    name: str,
+    reset_url: str,
+    expires_minutes: int,
+) -> bool:
+    return _send_email(
+        to_email,
+        "Reset your FURZY password",
+        (
+            f"Hi {name},\n\n"
+            "Open the link below to choose a new FURZY password:\n\n"
+            f"{reset_url}\n\n"
+            f"This link expires in {expires_minutes} minutes and can be "
+            "used once. If you did not request a password reset, you can "
+            "ignore this message.\n\n"
+            "FURZY"
+        ),
+    )
+
+
+def send_admin_alert(
+    to_emails: list[str],
+    title: str,
+    message: str,
+    link: str = "",
+) -> int:
+    """Send an alert email to every admin recipient that accepts it."""
+
+    body = f"{title}\n\n{message}\n"
+    full_link = ""
+
+    if link:
+        full_link = (
+            f"{settings.frontend_base_url.rstrip('/')}/"
+            f"{link.lstrip('/')}"
+        )
+        body += f"\nOpen in the admin panel: {full_link}\n"
+
+    body += "\nFURZY"
+    sent = 0
+
+    for email in to_emails:
+        if _send_email(email, f"[FURZY admin] {title}", body):
+            sent += 1
+
+    return sent

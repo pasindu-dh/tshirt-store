@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getMe, loginUser, refreshAuth, registerUser } from "../api/auth";
 import { clearStoredAuth, getStoredAuth, setStoredAuth } from "../api/tokens";
 import AuthContext from "./AuthContext";
@@ -102,6 +102,19 @@ export default function AuthProvider({ children }) {
     setUser(null);
   };
 
+  const refreshUser = useCallback(async () => {
+    const me = await getMe();
+    const stored = getStoredAuth();
+
+    setUser(me);
+
+    if (stored) {
+      setStoredAuth({ ...stored, user: me });
+    }
+
+    return me;
+  }, []);
+
   const value = {
     user,
     loading,
@@ -110,6 +123,7 @@ export default function AuthProvider({ children }) {
     login,
     register,
     logout,
+    refreshUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

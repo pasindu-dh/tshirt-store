@@ -27,3 +27,11 @@ export async function getProductBySlug(slug) {
   );
   return data;
 }
+
+export async function getRelatedProducts(productId, limit = 4) {
+  const { data } = await client.get(
+    `/products/${productId}/related`,
+    { params: { limit } }
+  );
+  return data;
+}

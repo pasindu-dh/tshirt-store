@@ -24,6 +24,7 @@ from app.routers import (
     admin_refunds,
     admin_reports,
     admin_returns,
+    admin_reviews,
     admin_shipping,
     admin_stats,
     auth,
@@ -81,6 +82,17 @@ elif settings.normalized_payment_provider not in {
 }:
     logger.warning(
         "Unknown PAYMENT_PROVIDER value; online payments are disabled."
+    )
+
+if settings.email_verification_required and not settings.smtp_configured:
+    logger.warning(
+        "EMAIL_VERIFICATION_REQUIRED is enabled but SMTP is not "
+        "configured; customers will not receive verification links."
+    )
+
+if settings.password_reset_token_minutes and not settings.smtp_configured:
+    logger.info(
+        "SMTP is not configured; password reset emails will be skipped."
     )
 
 
@@ -187,6 +199,7 @@ app.include_router(wishlist.router)
 app.include_router(coupons.router)
 app.include_router(admin.router)
 app.include_router(admin_coupons.router)
+app.include_router(admin_reviews.router)
 app.include_router(admin_orders.router)
 app.include_router(admin_returns.router)
 app.include_router(admin_reports.router)

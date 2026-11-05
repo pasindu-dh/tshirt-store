@@ -76,6 +76,15 @@ The image includes a `HEALTHCHECK` against `/health/ready`.
   credentials or tokens. Use `--skip-admin` for public checks only.
 - `APP_ENV=production` rejects a weak/default `JWT_SECRET` and a wildcard
   `FRONTEND_ORIGINS` at startup.
+- Validate the complete production configuration before deploying:
+  ```bash
+  cd backend
+  APP_ENV=production python -m app.check_production
+  ```
+  The command fails on a SQLite database URL, unsafe secrets/CORS, missing
+  PayHere checkout credentials, a missing SMTP sender, or an unwritable uploads
+  directory. It warns about sandbox mode, missing Merchant API credentials, and
+  a missing database SSL parameter. It never prints secret values.
 
 ### Required environment variables
 
@@ -93,11 +102,17 @@ The image includes a `HEALTHCHECK` against `/health/ready`.
 | `STOCK_RESERVATION_SWEEP_ENABLED` | In-process reservation sweeper; set `false` if using the cron command |
 | `STOCK_RESERVATION_SWEEP_SECONDS` | Sweeper interval, minimum 10 seconds |
 | `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Only needed for the one-time admin seed command |
-| `SMTP_HOST` | Optional SMTP server for order emails; leave blank to disable |
+| `SMTP_HOST` | Optional SMTP server for order, return, account, and admin alert emails; leave blank to disable |
 | `SMTP_PORT` | SMTP port, commonly `587` |
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | SMTP credentials, supplied through the host's secret manager |
-| `SMTP_FROM_EMAIL` | From address used for order notifications |
+| `SMTP_FROM_EMAIL` | From address used for notifications |
 | `SMTP_USE_TLS` | `true` for STARTTLS on port 587 |
+| `ADMIN_EMAIL_ALERTS_ENABLED` | Email a copy of new-order, new-return, and low-stock alerts; defaults to `true` when SMTP is configured |
+| `ADMIN_ALERT_EMAILS` | Optional comma-separated alert recipients; defaults to every active admin account |
+| `EMAIL_VERIFICATION_REQUIRED` | Require customers to verify their email before signing in; default `false` |
+| `EMAIL_VERIFICATION_TOKEN_HOURS` | Verification link lifetime in hours (default 48) |
+| `PASSWORD_RESET_TOKEN_MINUTES` | Password reset link lifetime in minutes (default 60) |
+| `REVIEW_MODERATION_ENABLED` | Hold new and edited reviews as pending until an admin publishes them; default `false` |
 | `PAYMENT_PROVIDER` | `disabled`, `mock`, or `payhere`; use `payhere` in production |
 | `PAYMENT_CURRENCY` | `LKR` |
 | `PAYHERE_MERCHANT_ID`, `PAYHERE_MERCHANT_SECRET` | PayHere merchant credentials, kept in the secret manager |
@@ -127,6 +142,24 @@ database transaction succeeds. If SMTP is not configured, sending is skipped
 and logged; email failures never fail the order itself. Use an app-specific
 SMTP password rather than a mailbox password where the provider supports it.
 
+When SMTP is configured, the same service sends:
+
+- admin alert copies for new orders, new return requests, and low-stock
+  crossings (to `ADMIN_ALERT_EMAILS`, or every active admin account);
+- customer email verification links when `EMAIL_VERIFICATION_REQUIRED=true`
+  (or optionally on registration when verification is not enforced);
+- single-use password reset links from `/auth/password/forgot`.
+
+Verification and reset links point at `FRONTEND_BASE_URL`. The API stores only
+token hashes, and a successful password reset invalidates every access and
+refresh token issued before it. `EMAIL_VERIFICATION_REQUIRED=true` without SMTP
+configuration logs a startup warning and leaves customers unable to verify;
+configure SMTP first.
+
+Set `REVIEW_MODERATION_ENABLED=true` to make new and edited reviews pending by
+default. Admins approve, reject, or delete them from the Reviews page; only
+published reviews count toward storefront ratings and averages.
+
 ### Uploads and multiple instances
 
 `UPLOADS_DIR` must be writable and persistent. On platforms with an ephemeral
@@ -136,9 +169,9 @@ disk uploads are not shared; use Cloudinary, S3, or another shared store.
 
 ### Rate limiting
 
-Login rate limiting is in-memory and per process. It protects the common
-single-instance deployment. For multiple API workers or instances, back the
-limiter with Redis or an edge rate-limit service.
+Login and password-reset rate limiting are in-memory and per process. They
+protect the common single-instance deployment. For multiple API workers or
+instances, back the limiters with Redis or an edge rate-limit service.
 
 ## 3. Deploy the frontend
 
@@ -248,6 +281,25 @@ APP_ENV=production
 
 `APP_ENV=production` is a hard guard: startup fails if mock payment mode is
 enabled or `PAYMENT_PROVIDER=mock`. Keep `PAYMENT_MOCK_ENABLED=false`.
+
+Validate the configuration and Merchant API key without exposing secrets:
+
+```bash
+cd backend
+python -m app.payhere_check --check-api
+```
+
+After a sandbox checkout has produced a payment reference, retrieve it too:
+
+```bash
+python -m app.payhere_check --check-api \
+  --reference "YOUR-ORDER-REFERENCE" --amount 2450
+```
+
+The command checks the provider selection, checkout credentials, mock guard,
+Merchant API key, and notify URL, then reports the provider status/amount/
+currency for the reference. It does not replace the browser-level sandbox
+checkout and signed-notification test below.
 
 3. The backend builds the `notify_url` as
    `BACKEND_PUBLIC_URL/payments/payhere/notify`. It must be publicly reachable
@@ -361,11 +413,17 @@ PayHere.
 
 ### Refunds and cancellation
 
-There is no automated refund API integration. If an order paid online is
-cancelled, the order is cancelled and stock/coupon usage is restored, but the
-payment remains `paid`; process the refund in the PayHere dashboard or add a
-provider refund workflow later. Never enable `PAYMENT_PROVIDER=mock` in
-production: it allows test-only completion of online orders.
+Refunds can be recorded manually or processed through the PayHere Refund API
+when `PAYHERE_API_APP_ID`/`PAYHERE_API_APP_SECRET` are configured and the API
+key has the required permissions. Full and partial refunds are validated
+against the payment's remaining refundable balance; full refunds set the
+payment and order to `refunded`.
+
+If an order paid online is cancelled, the order is cancelled and stock/coupon
+usage is restored, but the payment remains `paid`; process the refund through
+the admin refund workflow or the PayHere dashboard. Never enable
+`PAYMENT_PROVIDER=mock` in production: it allows test-only completion of online
+orders.
 
 ### Mock mode
 
@@ -381,10 +439,14 @@ online payment.
 - [ ] HTTPS enforced by the host; HSTS is sent for HTTPS requests.
 - [ ] Database backups and SSL enabled.
 - [ ] Uploads directory private to the app and backed up.
-- [ ] SMTP password stored as a secret; sender domain configured and tested.
+- [ ] SMTP password stored as a secret; sender domain configured and tested for order, verification, reset, and admin alert email.
+- [ ] `EMAIL_VERIFICATION_REQUIRED`, `REVIEW_MODERATION_ENABLED`, and `ADMIN_EMAIL_ALERTS_ENABLED` set intentionally for launch.
+- [ ] Password reset, email verification, and admin alert emails tested end to end with a real mailbox.
 - [ ] PayHere merchant secret stored as a secret; sandbox disabled for live.
 - [ ] PayHere Merchant API key restricted to the required permissions/domain/IP.
 - [ ] Return workflow reviewed: item-level requests, admin completion before restocking, and return status emails.
+- [ ] Review moderation policy reviewed (enable the queue, or confirm immediate publishing), and the admin Reviews page loads.
+- [ ] Order activity timeline checked on a test order after status changes, a detail edit, and a return.
 - [ ] Inventory low-stock thresholds reviewed per variant and the stock-movement audit history checked after a test order, cancellation, and return.
 - [ ] `APP_ENV=production`, `PAYMENT_PROVIDER=payhere`, and `PAYMENT_MOCK_ENABLED=false`.
 - [ ] `BACKEND_PUBLIC_URL/payments/payhere/notify` reachable over HTTPS.
@@ -394,5 +456,6 @@ online payment.
 - [ ] Host health check points to `/health/ready`; the included Docker health check is active if using the image.
 - [ ] `python -m app.smoke_test --base-url https://api.example.com` passes after deployment.
 - [ ] `APP_ENV=production` starts successfully with the final JWT secret and CORS origins, and fails with intentionally weak values.
+- [ ] `APP_ENV=production python -m app.check_production` passes (warnings reviewed) before the release.
 - [ ] Dependencies updated and `npm audit` / `pip-audit` reviewed.
 - [ ] `python -m pytest` and `npm test` green before deployment.

@@ -1,8 +1,86 @@
+from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
+
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.models import AdminNotification, ProductVariant
+from app.config import settings
+from app.models import AdminNotification, ProductVariant, User
 from app.models.common import utcnow
+from app.services.email import send_admin_alert
+
+_executor: ThreadPoolExecutor | None = None
+_executor_lock = Lock()
+
+
+def _alert_executor() -> ThreadPoolExecutor:
+    global _executor
+
+    with _executor_lock:
+        if _executor is None:
+            _executor = ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix="furzy-admin-alert",
+            )
+
+        return _executor
+
+
+def admin_alert_recipients(db: Session) -> list[str]:
+    configured = settings.admin_alert_recipient_list
+
+    if configured:
+        return configured
+
+    emails = db.scalars(
+        select(User.email)
+        .where(
+            User.role == "admin",
+            User.is_active.is_(True),
+        )
+        .order_by(User.id)
+    ).all()
+
+    return [email for email in emails if email]
+
+
+def _deliver_admin_alert(
+    recipients: list[str],
+    title: str,
+    message: str,
+    link: str,
+) -> None:
+    send_admin_alert(recipients, title, message, link)
+
+
+def dispatch_admin_alert(
+    db: Session, notification: AdminNotification
+) -> None:
+    if (
+        not settings.admin_email_alerts_enabled
+        or not settings.smtp_configured
+    ):
+        return
+
+    recipients = admin_alert_recipients(db)
+
+    if not recipients:
+        return
+
+    _alert_executor().submit(
+        _deliver_admin_alert,
+        recipients,
+        notification.title,
+        notification.message,
+        notification.link,
+    )
+
+
+def flush_admin_alerts(timeout: float = 5.0) -> None:
+    """Wait for queued alert emails (used by tests and shutdown)."""
+
+    if _executor is not None:
+        _executor.submit(lambda: None).result(timeout=timeout)
 
 
 def create_notification(
@@ -20,6 +98,7 @@ def create_notification(
         link=link,
     )
     db.add(notification)
+    dispatch_admin_alert(db, notification)
     return notification
 
 

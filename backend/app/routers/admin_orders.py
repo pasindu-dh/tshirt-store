@@ -35,7 +35,9 @@ from app.schemas.return_request import (
     ReturnRequestOut,
     ReturnReviewRequest,
 )
+from app.schemas.activity import OrderActivityOut
 from app.services import admin_orders
+from app.services import order_activity
 from app.services import payments as payment_service
 from app.services import refunds as refund_service
 from app.services import returns as return_service
@@ -163,6 +165,25 @@ def get_order_audit(
         )
 
     return results
+
+
+@router.get(
+    "/{order_id}/activity",
+    response_model=list[OrderActivityOut],
+)
+def get_order_activity(
+    order_id: int,
+    db: Session = Depends(get_db),
+):
+    order = admin_orders.get_order(db, order_id)
+
+    if order is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Order not found",
+        )
+
+    return order_activity.build_order_activity(db, order)
 
 
 @router.get(

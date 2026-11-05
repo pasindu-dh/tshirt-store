@@ -7,6 +7,9 @@ from app.database import get_db
 from app.models import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+optional_oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="/auth/login", auto_error=False
+)
 
 credentials_exception = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -25,18 +28,44 @@ def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
-    user_id = security.decode_token(token, "access")
+    payload = security.decode_token_claims(token, "access")
 
-    if user_id is None:
+    if payload is None:
         raise credentials_exception
 
-    user = db.get(User, user_id)
+    user = db.get(User, payload["user_id"])
 
-    if user is None:
+    if user is None or not security.token_matches_user(payload, user):
         raise credentials_exception
 
     if not user.is_active:
         raise inactive_account_exception
+
+    return user
+
+
+def get_optional_current_user(
+    token: str | None = Depends(optional_oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """Resolve a viewer when a valid token is present, else stay anonymous."""
+
+    if not token:
+        return None
+
+    payload = security.decode_token_claims(token, "access")
+
+    if payload is None:
+        return None
+
+    user = db.get(User, payload["user_id"])
+
+    if (
+        user is None
+        or not user.is_active
+        or not security.token_matches_user(payload, user)
+    ):
+        return None
 
     return user
 

@@ -2,7 +2,10 @@ from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import (
+    get_current_user,
+    get_optional_current_user,
+)
 from app.models import User
 from app.schemas.review import ReviewCreate, ReviewListOut, ReviewOut
 from app.services import reviews as review_service
@@ -16,9 +19,12 @@ router = APIRouter(prefix="/reviews", tags=["reviews"])
 )
 def list_product_reviews(
     product_id: int,
+    viewer: User | None = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ):
-    return review_service.list_reviews(db, product_id)
+    return review_service.list_reviews(
+        db, product_id, viewer=viewer
+    )
 
 
 @router.post(

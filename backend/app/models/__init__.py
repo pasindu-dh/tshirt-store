@@ -1,3 +1,4 @@
+from app.models.auth_token import AuthToken
 from app.models.cart import CartItem
 from app.models.category import Category
 from app.models.coupon import Coupon
@@ -15,6 +16,7 @@ from app.models.wishlist import WishlistItem
 
 __all__ = [
     "AdminNotification",
+    "AuthToken",
     "CartItem",
     "Category",
     "Coupon",

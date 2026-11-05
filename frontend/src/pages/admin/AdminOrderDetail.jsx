@@ -4,6 +4,7 @@ import { imageUrl } from "../../api/client";
 import {
   createAdminRefund,
   getAdminOrder,
+  getAdminOrderActivity,
   getAdminOrderAudit,
   getAdminOrderPayments,
   getAdminOrderReturns,
@@ -15,6 +16,7 @@ import {
   updateAdminOrderStatus,
   updateAdminRefund,
 } from "../../api/adminOrders";
+import OrderActivityTimeline from "../../components/admin/OrderActivityTimeline";
 import OrderEditForm from "../../components/admin/OrderEditForm";
 import OrderStatusBadge from "../../components/OrderStatusBadge";
 import { getApiError } from "../../utils/errors";
@@ -134,6 +136,11 @@ function AdminOrderDetail({ orderId }) {
   const [audit, setAudit] = useState([]);
   const [auditLoading, setAuditLoading] = useState(true);
   const [auditError, setAuditError] = useState("");
+  const [activity, setActivity] = useState([]);
+  const [activityLoading, setActivityLoading] = useState(true);
+  const [activityError, setActivityError] = useState("");
+  const [activityRefreshKey, setActivityRefreshKey] =
+    useState(0);
   const [editingDetails, setEditingDetails] = useState(false);
   const [detailsSaving, setDetailsSaving] = useState(false);
   const [detailsError, setDetailsError] = useState("");
@@ -256,6 +263,37 @@ function AdminOrderDetail({ orderId }) {
     };
   }, [orderId]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    setActivityError("");
+    getAdminOrderActivity(orderId)
+      .then((data) => {
+        if (!cancelled) setActivity(data);
+      })
+      .catch((requestError) => {
+        if (!cancelled) {
+          setActivityError(
+            getApiError(
+              requestError,
+              "Could not load the order activity."
+            )
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setActivityLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId, activityRefreshKey]);
+
+  const refreshActivity = () => {
+    setActivityRefreshKey((current) => current + 1);
+  };
+
   const refreshPayments = async () => {
     const data = await getAdminOrderPayments(orderId);
     setPayments(data);
@@ -290,6 +328,7 @@ function AdminOrderDetail({ orderId }) {
         note: returnReviewNote.trim(),
       });
       await refreshReturns();
+      refreshActivity();
       setReturnReviewNote("");
       setReturnMessage(`Return request ${status}.`);
     } catch (requestError) {
@@ -353,6 +392,7 @@ function AdminOrderDetail({ orderId }) {
       setOrder(updated);
       setEditingDetails(false);
       setDetailsMessage("Order details updated.");
+      refreshActivity();
 
       try {
         setAudit(await getAdminOrderAudit(orderId));
@@ -388,6 +428,7 @@ function AdminOrderDetail({ orderId }) {
       setOrder(refreshedOrder);
       await refreshPayments();
       await refreshReturns().catch(() => {});
+      refreshActivity();
       setProviderMessage("PayHere verification recorded.");
     } catch (requestError) {
       setProviderError(
@@ -439,6 +480,7 @@ function AdminOrderDetail({ orderId }) {
       setRefundReason("");
       setRefundNotes("");
       setProcessWithProvider(false);
+      refreshActivity();
       setRefundMessage("Refund/return record saved.");
     } catch (requestError) {
       setRefundError(
@@ -473,6 +515,7 @@ function AdminOrderDetail({ orderId }) {
       setOrder(refreshedOrder);
       await refreshPayments();
       await refreshReturns().catch(() => {});
+      refreshActivity();
       setRefundMessage("Refund marked completed.");
     } catch (requestError) {
       setRefundError(
@@ -515,6 +558,7 @@ function AdminOrderDetail({ orderId }) {
       await refreshPayments();
       setTransactionId("");
       setReconcileNote("");
+      refreshActivity();
       setReconcileMessage("Payment reconciliation recorded.");
     } catch (requestError) {
       setReconcileError(
@@ -548,6 +592,7 @@ function AdminOrderDetail({ orderId }) {
         action.status
       );
       setOrder(updated);
+      refreshActivity();
       setFlash(`Order marked as ${updated.status}.`);
     } catch (requestError) {
       setActionError(
@@ -719,6 +764,12 @@ function AdminOrderDetail({ orderId }) {
               </p>
             </section>
           )}
+
+          <OrderActivityTimeline
+            events={activity}
+            loading={activityLoading}
+            error={activityError}
+          />
         </div>
 
         <div className="space-y-6">

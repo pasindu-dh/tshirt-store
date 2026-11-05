@@ -103,6 +103,9 @@ test("a shopper can complete the full purchase journey", async ({
     await expect(
       page.getByRole("heading", { name: productName })
     ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "You may also like" })
+    ).toBeVisible();
 
     await page.getByRole("button", { name: "Add to cart" }).click();
     await expect(page.getByText("Added to cart.")).toBeVisible();
@@ -152,6 +155,16 @@ test("a shopper can complete the full purchase journey", async ({
     ).toBeVisible();
     await expect(page.getByText(productName).first()).toBeVisible();
     await expect(page.getByText(`Discount (${couponCode})`)).toBeVisible();
+
+    const activityResponse = await request.get(
+      `${API_URL}/admin/orders/${orderId}/activity`,
+      { headers: adminHeaders }
+    );
+    expect(activityResponse.status()).toBe(200);
+    const activity = await activityResponse.json();
+    expect(
+      activity.some((event) => event.title === "Order placed")
+    ).toBe(true);
 
     await page.goto(`${BASE_URL}/product/${product.slug}`);
     await page

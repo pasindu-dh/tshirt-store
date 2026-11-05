@@ -33,6 +33,8 @@ from app.models import User  # noqa: E402
 from app.rate_limit import (  # noqa: E402
     login_account_limiter,
     login_ip_limiter,
+    password_reset_account_limiter,
+    password_reset_ip_limiter,
 )
 from app.security import hash_password  # noqa: E402
 
@@ -48,6 +50,8 @@ def client():
     Base.metadata.create_all(bind=engine)
     login_account_limiter.clear()
     login_ip_limiter.clear()
+    password_reset_account_limiter.clear()
+    password_reset_ip_limiter.clear()
 
     with TestClient(app) as test_client:
         yield test_client

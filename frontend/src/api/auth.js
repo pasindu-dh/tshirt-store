@@ -32,3 +32,38 @@ export async function refreshAuth(refreshToken) {
 
   return data;
 }
+
+export async function getAuthConfig() {
+  const { data } = await client.get("/auth/config");
+  return data;
+}
+
+export async function requestPasswordReset(email) {
+  const { data } = await client.post("/auth/password/forgot", {
+    email,
+  });
+  return data;
+}
+
+export async function resetPassword(token, newPassword) {
+  const { data } = await client.post("/auth/password/reset", {
+    token,
+    new_password: newPassword,
+  });
+  return data;
+}
+
+export async function verifyEmail(token) {
+  const { data } = await client.post("/auth/verify-email", {
+    token,
+  });
+  return data;
+}
+
+export async function resendEmailVerification(email) {
+  const { data } = await client.post(
+    "/auth/verify-email/resend",
+    { email }
+  );
+  return data;
+}

@@ -44,6 +44,26 @@ def get_product_by_slug(slug: str, db: Session = Depends(get_db)):
     return product
 
 
+@router.get(
+    "/{product_id}/related", response_model=list[ProductOut]
+)
+def get_related_products(
+    product_id: int,
+    limit: int = Query(4, ge=1, le=12),
+    db: Session = Depends(get_db),
+):
+    product = catalog.get_product(
+        db, product_id, active_only=True
+    )
+
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    return catalog.list_related_products(
+        db, product, limit=limit
+    )
+
+
 @router.get("/{product_id}", response_model=ProductOut)
 def get_product(product_id: int, db: Session = Depends(get_db)):
     product = catalog.get_product(db, product_id, active_only=True)
