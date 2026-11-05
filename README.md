@@ -68,6 +68,8 @@ tshirt-store/
 │   ├── playwright.config.js
 │   └── vite.config.js
 │
+├── .claude/skills/      # Neon Claude Code skills (developer tooling)
+├── skills-lock.json     # Installed agent-skill lockfile
 ├── .github/workflows/ci.yml
 ├── render.yaml          # Render Blueprint for the API + persistent uploads disk
 └── DEPLOYMENT.md
@@ -357,6 +359,30 @@ E2E_DISPOSABLE_DB=1 E2E_ADMIN_EMAIL=... E2E_ADMIN_PASSWORD=... npm run test:e2e
 ```
 
 The disposable backend must be started with `PAYMENT_PROVIDER=mock` and `PAYMENT_MOCK_ENABLED=true` so the journey can exercise the online-payment UI. The test refuses to run unless `E2E_DISPOSABLE_DB=1` (or `CI=true`) is set, because it creates an order and a customer account. It deletes the product and coupon it creates. `E2E_ADMIN_EMAIL` and `E2E_ADMIN_PASSWORD` override the admin credentials read from `backend/.env`. See [`DEPLOYMENT.md`](DEPLOYMENT.md) for running the suite against a disposable database.
+
+## 🧰 Neon agent skills (optional developer tooling)
+
+Claude Code skills for working with Neon are installed with:
+
+```bash
+npx neon skills -y
+```
+
+The installer writes them to `.claude/skills/` and records them in
+`skills-lock.json`. The installed skills are:
+
+- `neon`
+- `neon-ai-gateway`
+- `neon-auth`
+- `neon-functions`
+- `neon-object-storage`
+- `neon-postgres`
+- `neon-realtime`
+
+These skills are optional developer tooling for Claude Code sessions; the
+application does not import them and they are not required to build, test,
+or deploy FURZY. Restart Claude Code if they do not appear in the skill list
+after installation.
 
 ## 🚢 Deployment
 
