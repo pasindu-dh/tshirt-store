@@ -5,6 +5,7 @@ from sqlalchemy.exc import OperationalError
 from app.config import settings
 from app.database import SessionLocal
 from app.models import User
+from app.models.common import utcnow
 from app.security import hash_password
 
 MIN_ADMIN_PASSWORD_LENGTH = 8
@@ -75,6 +76,10 @@ def seed_admin() -> None:
                 email=email,
                 password_hash=hash_password(password),
                 role="admin",
+                # Admin accounts are provisioned by an operator, so they
+                # are trusted without going through the customer email
+                # verification flow.
+                email_verified_at=utcnow(),
             )
             db.add(user)
             action = "Created"
@@ -82,6 +87,9 @@ def seed_admin() -> None:
             user.name = name
             user.role = "admin"
             user.password_hash = hash_password(password)
+            user.email_verified_at = (
+                user.email_verified_at or utcnow()
+            )
             action = "Updated"
 
         db.commit()

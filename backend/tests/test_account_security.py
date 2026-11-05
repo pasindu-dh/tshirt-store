@@ -2,6 +2,7 @@ from urllib.parse import parse_qs, urlparse
 
 import app.routers.auth as auth_router
 from app.config import settings
+from app.seed_admin import seed_admin
 
 
 def _token_from_url(url: str) -> str:
@@ -110,6 +111,32 @@ def test_email_verification_flow(client, monkeypatch):
         "/auth/verify-email", json={"token": second_token}
     )
     assert reused.status_code == 400
+
+
+def test_seeded_admin_is_marked_verified(
+    client, monkeypatch
+):
+    monkeypatch.setattr(
+        settings, "email_verification_required", True
+    )
+    monkeypatch.setattr(
+        settings, "admin_name", "Seeded Admin"
+    )
+    monkeypatch.setattr(
+        settings, "admin_email", "seeded-admin@furzy.dev"
+    )
+    monkeypatch.setattr(
+        settings, "admin_password", "SeededPass123!"
+    )
+
+    seed_admin()
+
+    login = _login(
+        client, "seeded-admin@furzy.dev", "SeededPass123!"
+    )
+    assert login.status_code == 200, login.text
+    assert login.json()["user"]["role"] == "admin"
+    assert login.json()["user"]["email_verified"] is True
 
 
 def test_resend_verification_hides_unknown_email(client):
