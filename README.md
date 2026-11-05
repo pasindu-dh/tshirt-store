@@ -22,7 +22,7 @@ A full-stack web application featuring an interactive React frontend and a robus
 - **Pillow** (Server-side image verification for admin uploads)
 - **psycopg 3** (PostgreSQL driver for production)
 - **Uvicorn** (ASGI server)
-- **StaticFiles** (Local image serving)
+- **StaticFiles** (bundled seed images) and PostgreSQL-backed admin uploads
 - **SMTP** (Optional order confirmation/status emails via the standard library)
 - **PayHere** (Optional hosted online checkout with signed notifications)
 - **CORS Middleware** (Configured to allow frontend connections)
@@ -50,7 +50,7 @@ tshirt-store/
 │   │   └── seed_admin.py # Admin account seed script
 │   ├── alembic/          # Database migrations
 │   ├── images/           # Static product images served by the backend
-│   ├── uploads/          # Uploaded product images (runtime, git-ignored)
+│   ├── uploads/          # Local fallback/cache for uploads (runtime, git-ignored)
 │   ├── tests/            # pytest suite (isolated temporary database)
 │   ├── main.py           # Entry point for `uvicorn main:app`
 │   ├── Dockerfile        # Production API image
@@ -71,7 +71,7 @@ tshirt-store/
 ├── .claude/skills/      # Neon Claude Code skills (developer tooling)
 ├── skills-lock.json     # Installed agent-skill lockfile
 ├── .github/workflows/ci.yml
-├── render.yaml          # Render Blueprint for the API + persistent uploads disk
+├── render.yaml          # Render Free Blueprint for the API
 └── DEPLOYMENT.md
 ```
 
@@ -112,7 +112,7 @@ The backend serves the API and static images for the products.
 
    Allowed frontend origins default to `http://localhost:5173` and `http://127.0.0.1:5173`. Override them with the `FRONTEND_ORIGINS` environment variable (comma-separated). See `backend/.env.example` for all options. The SQLite database lives at `backend/store.db` and is git-ignored.
 
-   Product images uploaded through the admin panel are stored in `backend/uploads/` (created automatically and git-ignored) and served from `/uploads`. Uploads are verified by Pillow: the file must actually contain a JPEG, PNG, or WebP image, not just claim that content type. Files are limited to 5 MB and 40 megapixels.
+   Product images uploaded through the admin panel are stored in PostgreSQL in the `uploaded_images` table and served from `/uploads`. This keeps them durable on Render Free, whose local filesystem is ephemeral. `backend/uploads/` remains a local fallback/cache for existing files and development. Uploads are verified by Pillow: the file must actually contain a JPEG, PNG, or WebP image, not just claim that content type. Files are limited to 5 MB and 40 megapixels. Database-backed uploads count toward the PostgreSQL storage limit.
 
    Login attempts are rate-limited in memory (5 failed attempts per account and 20 per IP in a 15-minute window), and password-reset requests are limited to 3 per account and 15 per IP in the same window. Successful logins and completed resets clear the relevant counters. Multi-worker deployments should move these limiters to Redis.
 
@@ -151,7 +151,7 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 - `GET /images/{filename}`: Serves static images for the T-shirts.
 - `GET /`: Basic backend status endpoint.
 - `GET /health/live`: Liveness check; returns `{"status": "ok"}` without touching the database.
-- `GET /health/ready`: Readiness check for the database connection and writable uploads directory; returns `503` and per-check status when unready.
+- `GET /health/ready`: Readiness check for the database connection and the writable local uploads fallback directory; returns `503` and per-check status when unready.
 
 ### Authentication and account recovery
 - `POST /auth/register`: Create a customer account and return access + refresh tokens. When SMTP is configured, a verification email is sent.
@@ -229,7 +229,7 @@ The frontend runs on Vite and communicates with the FastAPI backend.
 - `POST /admin/products`: Create a product with images and size variants.
 - `PUT /admin/products/{id}`: Update a product, its images, or its variants.
 - `DELETE /admin/products/{id}`: Delete a product.
-- `POST /admin/uploads`: Upload a product image using multipart form data (`file` field). Accepts JPEG, PNG, and WebP up to 5 MB; the actual image format is verified with Pillow. Returns `{ "url": "/uploads/<filename>" }`.
+- `POST /admin/uploads`: Upload a product image using multipart form data (`file` field). Accepts JPEG, PNG, and WebP up to 5 MB; the actual image format is verified with Pillow. Stores the image in PostgreSQL and returns `{ "url": "/uploads/<filename>" }`. `GET /uploads/{filename}` serves the database image, with a local-filesystem fallback for legacy development files.
 - `POST /admin/categories`: Create a category.
 - `PUT /admin/categories/{id}`: Rename a category.
 - `DELETE /admin/categories/{id}`: Delete an empty category.
@@ -311,9 +311,9 @@ Sign in at `/login` with an admin account to manage the store:
 ## 🩺 Health and launch checks
 
 - `GET /health/live` verifies the API process is serving requests.
-- `GET /health/ready` checks database connectivity and uploads-directory writability; unready responses use HTTP `503`.
+- `GET /health/ready` checks database connectivity and local uploads-fallback writability; unready responses use HTTP `503`.
 - Production startup rejects a weak/default `JWT_SECRET` and wildcard `FRONTEND_ORIGINS` when `APP_ENV=production`. Mock payments are already rejected in production.
-- `python -m app.check_production` validates the production database URL, secrets, CORS, PayHere credentials, SMTP sender, admin email, and uploads directory, and checks database connectivity. Run it with the production environment loaded; it never prints secrets.
+- `python -m app.check_production` validates the production database URL, secrets, CORS, PayHere credentials, SMTP sender, admin email, and uploads fallback directory, and checks database connectivity. Run it with the production environment loaded; it never prints secrets. For the free demo, use `--free-demo` to treat missing SMTP/admin-email/PayHere checkout credentials as expected warnings.
 - The Docker image includes a health check against `/health/ready`.
 - Run the API smoke test against a running backend:
   ```bash
@@ -335,7 +335,7 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-Coverage includes authentication and role guards, login rate limiting, catalog filters and slug lookup, cart stock caps and guest-cart merging, transactional order creation and stock decrement, coupon previews/discounts/usage rules, admin status transitions and cancellation restock, dashboard stats, reviews, wishlist privacy, upload validation, security headers, CORS, order date filters, mock online payments, PayHere signature/amount verification, chargebacks, duplicate/delayed notifications, stock reservation expiry, fulfillment guards, manual reconciliation, refund/return records, provider reconciliation/refund adapters, item-level customer return requests, quantity validation, cancellation and reapplication, completion restocking without double restock, the global admin return queue, and payment/return email timing. Financial reporting tests cover partial and full refunds, pending refund totals, date-filtered gross/net revenue, day/month grouping, return totals and returned units, dashboard net revenue, and admin-only access. Inventory tests cover stock movements for orders, cancellations, and return restocks; manual adjustments and validation; per-variant thresholds; movement filters and access guards; product deletion snapshots; and variant-ID preservation when editing products. Customer-management tests cover directory filtering, admin/customer access separation, order and return aggregates, lifetime gross/net spend, pending and completed refunds, and customer detail order/return histories. Product-performance tests cover units/revenue aggregation, completed return rates, category rollups, current stock value, date filtering, limits, and admin-only access. CSV export tests cover order line items, customer aggregates, return/refund rows, stock movements, financial periods, filters, headers, download metadata, access guards, and date/status validation. Health/config tests cover liveness, database/uploads readiness, unready responses, and production JWT/CORS validation. Return-policy tests cover the public policy endpoint, delivery timestamps, structured reason codes, late-request rejection, and disabling the window. Notification tests cover order/return alerts, low-stock crossing and re-arming, unread counts, single/all mark-read, filtering, and admin-only access. Order-edit tests cover pending/confirmed edits, validation, field-level audit history, no-op edits, shipment lockout, and admin-only access. Customer-account tests cover deactivation blocking login/existing tokens/refresh, reactivation, directory status fields, and admin-only access controls. Refund-queue tests cover global listing, customer/payment context, status/type/date/search filters, pagination, and admin-only access. Catalog-import tests cover full CSV export, new-product creation, existing-product/variant updates without removing omitted variants, dry-run no-write behavior, row validation, duplicate SKU/variant errors, category/slug errors, stock movement creation, and admin-only access. Shipping tests cover admin CRUD/validation, public active-method ordering, selected-method order totals/snapshots, inactive/missing method rejection, cart default fees, and flat-fee fallback. Account-security tests cover email verification/resend, login enforcement, password reset, token rotation, generic responses, and reset rate limiting. Review-moderation tests cover pending reviews, hidden public counts, owner visibility, admin filtering, approval/rejection, re-moderation after edits, and access guards. Related-product tests cover same-category priority, catalog fill, active-only filtering, limits, and missing products. Order-activity tests cover consolidated placement/status/edit/return events, actors, ordering, and admin-only access. Admin-alert tests cover recipient defaults/overrides, new-order alert dispatch, disabling alerts, and email-link formatting.
+Coverage includes authentication and role guards, login rate limiting, catalog filters and slug lookup, cart stock caps and guest-cart merging, transactional order creation and stock decrement, coupon previews/discounts/usage rules, admin status transitions and cancellation restock, dashboard stats, reviews, wishlist privacy, database-backed upload validation with local fallback, security headers, CORS, order date filters, mock online payments, PayHere signature/amount verification, chargebacks, duplicate/delayed notifications, stock reservation expiry, fulfillment guards, manual reconciliation, refund/return records, provider reconciliation/refund adapters, item-level customer return requests, quantity validation, cancellation and reapplication, completion restocking without double restock, the global admin return queue, and payment/return email timing. Financial reporting tests cover partial and full refunds, pending refund totals, date-filtered gross/net revenue, day/month grouping, return totals and returned units, dashboard net revenue, and admin-only access. Inventory tests cover stock movements for orders, cancellations, and return restocks; manual adjustments and validation; per-variant thresholds; movement filters and access guards; product deletion snapshots; and variant-ID preservation when editing products. Customer-management tests cover directory filtering, admin/customer access separation, order and return aggregates, lifetime gross/net spend, pending and completed refunds, and customer detail order/return histories. Product-performance tests cover units/revenue aggregation, completed return rates, category rollups, current stock value, date filtering, limits, and admin-only access. CSV export tests cover order line items, customer aggregates, return/refund rows, stock movements, financial periods, filters, headers, download metadata, access guards, and date/status validation. Health/config tests cover liveness, database/uploads readiness, unready responses, and production JWT/CORS validation. Return-policy tests cover the public policy endpoint, delivery timestamps, structured reason codes, late-request rejection, and disabling the window. Notification tests cover order/return alerts, low-stock crossing and re-arming, unread counts, single/all mark-read, filtering, and admin-only access. Order-edit tests cover pending/confirmed edits, validation, field-level audit history, no-op edits, shipment lockout, and admin-only access. Customer-account tests cover deactivation blocking login/existing tokens/refresh, reactivation, directory status fields, and admin-only access controls. Refund-queue tests cover global listing, customer/payment context, status/type/date/search filters, pagination, and admin-only access. Catalog-import tests cover full CSV export, new-product creation, existing-product/variant updates without removing omitted variants, dry-run no-write behavior, row validation, duplicate SKU/variant errors, category/slug errors, stock movement creation, and admin-only access. Shipping tests cover admin CRUD/validation, public active-method ordering, selected-method order totals/snapshots, inactive/missing method rejection, cart default fees, and flat-fee fallback. Account-security tests cover email verification/resend, login enforcement, password reset, token rotation, generic responses, and reset rate limiting. Review-moderation tests cover pending reviews, hidden public counts, owner visibility, admin filtering, approval/rejection, re-moderation after edits, and access guards. Related-product tests cover same-category priority, catalog fill, active-only filtering, limits, and missing products. Order-activity tests cover consolidated placement/status/edit/return events, actors, ordering, and admin-only access. Admin-alert tests cover recipient defaults/overrides, new-order alert dispatch, disabling alerts, and email-link formatting.
 
 ### Frontend
 
@@ -386,11 +386,18 @@ after installation.
 
 ## 🚢 Deployment
 
-The repository includes a Render Blueprint (`render.yaml`) for the API and
-`frontend/vercel.json` for the frontend. The recommended stack is Render for
-the FastAPI API, Vercel for the React frontend, and Neon PostgreSQL for the
-database. See [`DEPLOYMENT.md`](DEPLOYMENT.md) for the production checklist,
-the Render/Vercel/Neon step-by-step, PostgreSQL and Neon connection guidance,
-persistent uploads, SMTP constraints, PayHere sandbox verification, Docker,
-CI, and launch checks. GitHub Actions runs backend tests, frontend
-lint/unit/build, and the Playwright journey on every push and pull request.
+The repository includes a Render Free Blueprint (`render.yaml`) for the API
+and `frontend/vercel.json` for the frontend. The recommended free demo stack is
+Render Free for the FastAPI API, Vercel Hobby for the React frontend, and Neon
+Free PostgreSQL for the database. Admin-uploaded images are stored in
+PostgreSQL so they survive Render's ephemeral filesystem and sleep cycles.
+
+Free-tier constraints: Render sleeps after 15 minutes and cold-starts in about
+a minute; Render Free cannot send SMTP, so email is disabled for the demo; Neon
+Free has 1 GB storage and autosuspends after 5 minutes; Vercel Hobby is for
+non-commercial personal projects; PayHere must remain in sandbox mode. See
+[`DEPLOYMENT.md`](DEPLOYMENT.md) for the beginner-friendly Render/Vercel/Neon
+steps, migration and admin-seed commands, environment-variable list, warnings,
+PostgreSQL guidance, PayHere sandbox verification, Docker, and launch checks.
+GitHub Actions runs backend tests, frontend lint/unit/build, and the Playwright
+journey on every push and pull request.

@@ -296,10 +296,18 @@ def environment_checks(config: Settings) -> list[Check]:
             writable,
             "UPLOADS_DIR",
             (
-                str(uploads)
+                f"{uploads} (local fallback/cache)"
                 if writable
-                else "directory must exist and be writable"
+                else "local fallback directory must be writable"
             ),
+        )
+    )
+    checks.append(
+        Check(
+            "PASS",
+            "UPLOAD_STORAGE",
+            "uploaded product images are stored in PostgreSQL; "
+            "UPLOADS_DIR is only a local fallback/cache",
         )
     )
 
@@ -322,8 +330,59 @@ def database_check() -> Check:
     return Check("PASS", "database connection", "SELECT 1 succeeded")
 
 
-def run_checks(config: Settings) -> int:
+FREE_DEMO_OPTIONAL_CHECKS = {
+    "PAYHERE_CHECKOUT_CREDENTIALS",
+    "SMTP",
+    "ADMIN_EMAIL",
+}
+
+
+def _apply_free_demo_mode(
+    checks: list[Check], config: Settings
+) -> None:
+    for check in checks:
+        if (
+            check.name in FREE_DEMO_OPTIONAL_CHECKS
+            and check.status == "FAIL"
+        ):
+            check.status = "WARN"
+            check.detail = (
+                f"{check.detail} (optional for the free demo)"
+                if check.detail
+                else "optional for the free demo"
+            )
+
+    for check in checks:
+        if check.name == "PAYHERE_SANDBOX":
+            if config.payhere_sandbox:
+                check.status = "PASS"
+                check.detail = (
+                    "sandbox mode is required for the free demo"
+                )
+            else:
+                check.status = "FAIL"
+                check.detail = (
+                    "live PayHere mode is not allowed for the free demo"
+                )
+        elif (
+            check.name == "MIGRATION_DATABASE_URL"
+            and check.status == "WARN"
+        ):
+            check.status = "PASS"
+            check.detail = (
+                "not needed on Render Free; use the Neon direct URL "
+                "locally for Alembic"
+            )
+
+
+def run_checks(
+    config: Settings, *, free_demo: bool = False
+) -> int:
     checks = environment_checks(config)
+
+    if free_demo:
+        _apply_free_demo_mode(checks, config)
+
     checks.append(database_check())
     failures = 0
     warnings = 0
@@ -349,7 +408,15 @@ def main(argv: list[str] | None = None) -> int:
             "Validate production settings before deploying FURZY."
         )
     )
-    parser.parse_args(argv)
+    parser.add_argument(
+        "--free-demo",
+        action="store_true",
+        help=(
+            "Treat missing SMTP, admin-email, and PayHere checkout "
+            "credentials as warnings for the free demo deployment."
+        ),
+    )
+    args = parser.parse_args(argv)
 
     if os.environ.get("APP_ENV", "").strip().lower() not in {
         "production",
@@ -360,7 +427,9 @@ def main(argv: list[str] | None = None) -> int:
             "loaded before running this check."
         )
 
-    return run_checks(settings)
+    return run_checks(
+        settings, free_demo=args.free_demo
+    )
 
 
 if __name__ == "__main__":

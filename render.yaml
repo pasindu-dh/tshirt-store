@@ -2,38 +2,36 @@ services:
   - type: web
     name: furzy-api
     runtime: python
-    # Paid plan: required for a persistent disk and outbound SMTP
-    # (Render free web services block SMTP ports 465 and 587).
-    plan: 0.5c-512mb
+    # Render Free: the service sleeps after inactivity and the local
+    # filesystem is ephemeral. Uploaded images are stored in PostgreSQL.
+    plan: free
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: 'uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"'
     healthCheckPath: /health/ready
-    preDeployCommand: python -m alembic upgrade head
     autoDeployTrigger: "off"
-    disk:
-      name: furzy-uploads
-      mountPath: /var/data/uploads
-      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: "3.13.16"
       - key: APP_ENV
         value: production
+      # Neon pooled URL, for example:
+      # postgresql+psycopg://USER:PASSWORD@HOST-pooler.REGION.aws.neon.tech/DB?sslmode=require
       - key: DATABASE_URL
-        sync: false
-      - key: MIGRATION_DATABASE_URL
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      # Exact Vercel production origin, for example:
+      # https://your-project.vercel.app (no trailing slash)
       - key: FRONTEND_ORIGINS
         sync: false
       - key: FRONTEND_BASE_URL
         sync: false
+      # Render service URL, for example https://furzy-api.onrender.com
       - key: BACKEND_PUBLIC_URL
         sync: false
       - key: UPLOADS_DIR
-        value: /var/data/uploads
+        value: /tmp/furzy-uploads
       - key: SHIPPING_FEE_LKR
         value: "350"
       - key: RETURN_WINDOW_DAYS
@@ -49,36 +47,20 @@ services:
       - key: REVIEW_MODERATION_ENABLED
         value: "false"
       - key: ADMIN_EMAIL_ALERTS_ENABLED
-        value: "true"
+        value: "false"
       - key: ADMIN_ALERT_EMAILS
         value: ""
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_USERNAME
-        sync: false
-      - key: SMTP_PASSWORD
-        sync: false
-      - key: SMTP_FROM_EMAIL
-        sync: false
-      - key: SMTP_USE_TLS
-        value: "true"
       - key: PAYMENT_PROVIDER
         value: payhere
       - key: PAYMENT_CURRENCY
         value: LKR
       - key: PAYMENT_MOCK_ENABLED
         value: "false"
+      # Sandbox only. Never change this to false for the free demo.
+      # Add PAYHERE_MERCHANT_ID / PAYHERE_MERCHANT_SECRET (and optional
+      # PAYHERE_API_APP_ID / PAYHERE_API_APP_SECRET) in the Render
+      # dashboard when sandbox credentials are available.
       - key: PAYHERE_SANDBOX
         value: "true"
-      - key: PAYHERE_MERCHANT_ID
-        sync: false
-      - key: PAYHERE_MERCHANT_SECRET
-        sync: false
-      - key: PAYHERE_API_APP_ID
-        sync: false
-      - key: PAYHERE_API_APP_SECRET
-        sync: false
       - key: PAYHERE_API_TIMEOUT_SECONDS
         value: "10"

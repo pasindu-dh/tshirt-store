@@ -113,6 +113,24 @@ def test_email_verification_flow(client, monkeypatch):
     assert reused.status_code == 400
 
 
+def test_password_reset_without_smtp_does_not_crash(
+    client,
+):
+    _register(
+        client,
+        email="no-smtp@furzy.dev",
+        password="NoSmtpPass123!",
+    )
+
+    response = client.post(
+        "/auth/password/forgot",
+        json={"email": "no-smtp@furzy.dev"},
+    )
+
+    assert response.status_code == 202
+    assert "reset" in response.json()["message"].lower()
+
+
 def test_seeded_admin_is_marked_verified(
     client, monkeypatch
 ):

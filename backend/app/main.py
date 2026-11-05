@@ -181,9 +181,10 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 
-# Serve images from an absolute path so the server works from any directory.
+# Serve bundled seed images from an absolute path so the server works
+# from any directory. Uploaded product images are served by the
+# database-backed `/uploads/{filename}` route (with a local fallback).
 app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
-app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 
 app.include_router(products.router)
 app.include_router(categories.router)
@@ -212,6 +213,7 @@ app.include_router(admin_exports.router)
 app.include_router(health.router)
 app.include_router(admin_stats.router)
 app.include_router(uploads.router)
+app.include_router(uploads.files_router)
 
 
 @app.get("/", tags=["health"])

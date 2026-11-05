@@ -2,139 +2,286 @@
 
 FURZY is a React/Vite frontend and a FastAPI backend. The backend uses
 SQLAlchemy and works with SQLite locally and PostgreSQL in production.
-Uploaded product images are stored on the backend's local filesystem, so
-production needs persistent storage for that directory (or an object-storage
-adapter added in a later phase).
+Admin-uploaded product images are stored in PostgreSQL and served from
+`/uploads`. The local uploads directory is a fallback for existing local files
+and development; it is not required for durability.
 
-## Recommended production layout
+## Recommended free-demo layout
 
 | Part | Suggested host |
 | --- | --- |
-| Frontend (`frontend/`) | Vercel or Netlify |
-| API (`backend/`) | Render or Railway (Docker or native Python) |
-| Database | Neon, Supabase, or another managed PostgreSQL service |
-| Images | A persistent disk on the API host; Cloudinary/S3 if the API runs multiple instances |
+| Frontend (`frontend/`) | Vercel Hobby |
+| API (`backend/`) | Render Free |
+| Database | Neon Free PostgreSQL |
+| Images | Neon PostgreSQL (`uploaded_images` table) |
 
 HTTPS is provided by these platforms. Never serve the API over plain HTTP in
-production.
+production. For a paid production deployment, a persistent disk or S3-style
+object storage can replace database-backed image storage later.
 
-## Render + Vercel + Neon blueprint
+## Free demo deployment: Vercel Hobby + Render Free + Neon Free
 
-The repository includes a `render.yaml` Blueprint and an updated
-`frontend/vercel.json` for this stack.
+This is the supported path for a **non-commercial university/personal
+demonstration**. The repository's `render.yaml` and `frontend/vercel.json` are
+configured for this stack.
 
-### What the Blueprint creates
+### Read the free-tier limits first
 
-- A Python web service named `furzy-api`, root directory `backend`
+- **Render Free** sleeps after 15 minutes without traffic. The next request
+  takes about a minute to wake it. Each workspace gets 750 instance hours per
+  month. The filesystem is ephemeral and cannot attach a disk. Render Free has
+  no shell and no pre-deploy commands, and it blocks outbound SMTP ports 25,
+  465, and 587.
+- **Neon Free** includes 1 GB of PostgreSQL storage and 100 CU-hours per
+  project per month. Computes suspend after 5 minutes of inactivity and resume
+  on the next connection. Uploaded images count toward the 1 GB.
+- **Vercel Hobby** is free for personal, non-commercial projects. This demo
+  qualifies; do not use it for a commercial store. Hobby includes 100 GB of
+  fast data transfer and up to 100 deployments per day, which is ample for a
+  small demo.
+- **Email cannot be sent from Render Free.** The app is configured with email
+  disabled for this demo: registration, login, cart, checkout, orders, returns,
+  and admin pages work, but verification emails, password-reset emails, order
+  emails, and admin alert emails are skipped. Never set
+  `EMAIL_VERIFICATION_REQUIRED=true` on this deployment.
+- **PayHere is sandbox-only.** Without sandbox credentials, online payments
+  remain disabled and Cash on Delivery still works. Never set
+  `PAYHERE_SANDBOX=false` for the free demo.
+
+### Uploaded images on the free plan
+
+Render Free has no persistent disk, so admin-uploaded product images are
+stored in PostgreSQL in the `uploaded_images` table and served from
+`/uploads/<filename>`. `UPLOADS_DIR` is only a local fallback/cache; on Render
+it points to `/tmp/furzy-uploads`, which disappears on restart. Existing local
+files in `backend/uploads` are still served.
+
+Images count toward Neon's storage limit. The upload limit is 5 MB per image;
+keep demo images small and remove unused uploads if storage grows.
+
+### What render.yaml creates
+
+- Free Python web service named `furzy-api`, root directory `backend`
 - Python `3.13.16`
 - Build: `pip install -r requirements.txt`
-- Pre-deploy: `python -m alembic upgrade head`
-- Start: `uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips=*`
+- Start: `uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"`
 - Health check: `/health/ready`
-- Persistent disk: `furzy-uploads`, mounted at `/var/data/uploads`
-- `UPLOADS_DIR=/var/data/uploads`
+- `UPLOADS_DIR=/tmp/furzy-uploads`
+- No disk, no pre-deploy command
+- `autoDeployTrigger: "off"`; creating the Blueprint triggers the first deploy
 
-The service uses the paid `0.5c-512mb` plan on purpose. Render free web
-services cannot attach a persistent disk, and since September 2025 free web
-services also block outbound SMTP ports 465 and 587. Port 25 is blocked on
-all plans. Use a paid instance for both uploads and email.
+### Step 1: Create the Neon database
 
-### Required accounts and values
+1. Create a Neon project and database. Choose the Neon region closest to
+   your Render region (Render’s default is Oregon) to reduce latency.
+2. Copy both connection strings:
+   - **Pooled** URL for Render (`DATABASE_URL`)
+   - **Direct** URL for migrations (`MIGRATION_DATABASE_URL`)
+3. Replace the scheme in both with `postgresql+psycopg://` and keep
+   `?sslmode=require`. For example:
+   ```text
+   postgresql+psycopg://USER:PASSWORD@HOST-pooler.REGION.aws.neon.tech/DB?sslmode=require
+   postgresql+psycopg://USER:PASSWORD@HOST.REGION.aws.neon.tech/DB?sslmode=require
+   ```
+   Never commit these URLs.
 
-1. A Neon project with a database and two connection strings:
-   - **Pooled** URL for `DATABASE_URL` (application runtime)
-   - **Direct** URL for `MIGRATION_DATABASE_URL` (Alembic)
-2. A Render Blueprint created from this repository.
-3. A Vercel project with root directory `frontend`.
-4. SMTP credentials for a provider that supports port 587 or 465.
-5. PayHere sandbox credentials for initial online-payment verification.
+### Step 2: Run migrations and seed the admin from your computer
 
-Use the SQLAlchemy URL prefix `postgresql+psycopg://` for both Neon URLs.
-Keep `sslmode=require` in both. Add the Neon database, user, and password
-placeholders exactly as Neon provides them; never commit the URLs.
+Render Free has no shell or pre-deploy command, so run these **locally**. Use
+temporary environment variables; do not overwrite your existing
+`backend/.env`, so your local SQLite setup remains intact.
 
-### Deployment order
+PowerShell example (activate the backend virtual environment first, for
+example `.\venv\Scripts\Activate.ps1`):
 
-1. Create the Neon database. Copy both the pooled and direct URLs.
-2. Create the Render Blueprint. Creating a Blueprint triggers its first
-   deploy, so do this only when you are ready; `autoDeployTrigger: "off"` in
-   the Blueprint only disables later automatic deploys. Render reads
-   `render.yaml` and prompts for every `sync: false` variable:
-   - `DATABASE_URL` — Neon pooled URL
-   - `MIGRATION_DATABASE_URL` — Neon direct URL
-   - `FRONTEND_ORIGINS` — set to the final Vercel origin, for example
-     `https://furzy.vercel.app` (no trailing slash). You can set this after
-     the first frontend deploy and redeploy the API.
-   - `FRONTEND_BASE_URL` — same Vercel origin
+```powershell
+cd backend
+$env:DATABASE_URL = "postgresql+psycopg://USER:PASSWORD@HOST-pooler.REGION.aws.neon.tech/DB?sslmode=require"
+$env:MIGRATION_DATABASE_URL = "postgresql+psycopg://USER:PASSWORD@HOST.REGION.aws.neon.tech/DB?sslmode=require"
+$env:ADMIN_NAME = "Store Admin"
+$env:ADMIN_EMAIL = "you@example.com"
+$env:ADMIN_PASSWORD = "use-a-strong-password"
+python -m alembic upgrade head
+python -m app.seed_admin
+Remove-Item Env:ADMIN_PASSWORD
+Remove-Item Env:DATABASE_URL
+Remove-Item Env:MIGRATION_DATABASE_URL
+```
+
+Bash users can use `export ...` and `unset ...` instead.
+
+- `DATABASE_URL` is the pooled URL used by the application.
+- `MIGRATION_DATABASE_URL` is the direct URL used by Alembic.
+- `python -m app.seed` is **never** run automatically and should not be run
+  against this database. It is only the demo catalog seeder.
+- `python -m app.seed_admin` can be rerun if you need to reset the admin
+  password; it updates the existing admin account.
+
+### Step 3: Create the Render Blueprint
+
+1. In Render, create a new **Blueprint** from this repository. Render reads
+   `render.yaml`.
+2. Set the prompted values:
+   - `DATABASE_URL` — the Neon **pooled** URL
+   - `FRONTEND_ORIGINS` — use `https://your-project.vercel.app` for now if the
+     Vercel URL is not known yet (no trailing slash)
+   - `FRONTEND_BASE_URL` — same as `FRONTEND_ORIGINS`
    - `BACKEND_PUBLIC_URL` — the Render service URL, for example
-     `https://furzy-api.onrender.com`
-   - SMTP host, port, username, password, and from address
-   - PayHere merchant and Merchant API credentials
-   - Optional `ADMIN_ALERT_EMAILS`
-3. Let Render run the build and pre-deploy migration. The first deploy can
-   start even if PayHere credentials are not filled in yet, but online
-   payments stay disabled until they are.
-4. Add `ADMIN_EMAIL` (non-secret) and `ADMIN_PASSWORD` (secret) as temporary
-   Render environment variables, open the Render Shell, and seed the admin
-   once:
-   ```bash
-   python -m app.seed_admin
+     `https://furzy-api.onrender.com` (update it after Render shows the exact
+     URL)
+3. Render generates `JWT_SECRET`; the rest of the required values are already
+   in `render.yaml`. PayHere sandbox credentials are optional and can be added
+   later in the Render dashboard.
+4. Creating the Blueprint triggers the first deploy. The free instance may
+   take a minute to start, especially while Neon wakes up. `autoDeployTrigger`
+   is `"off"`, so later pushes do not deploy until you trigger them manually.
+   If the first deploy fails its health check while Neon is cold-starting,
+   redeploy the service after the database is awake.
+
+### Step 4: Deploy the frontend to Vercel
+
+1. Import the repository into Vercel.
+2. Set the project root to `frontend`; use the Vite framework and Node.js 22.
+3. Add this environment variable for Production (and Preview only if you
+   need preview builds):
+   ```text
+   VITE_API_URL=https://furzy-api.onrender.com
    ```
-   Then remove `ADMIN_PASSWORD` from the Render environment. Keep
-   `ADMIN_EMAIL` because `check_production` uses it as a launch check. Do
-   **not** run `python -m app.seed`; that is demo catalog data.
-5. In Vercel, import the repository, set the root directory to `frontend`,
-   and add `VITE_API_URL=https://furzy-api.onrender.com` to Production (and
-   Preview if needed). Redeploy after changing it because Vite embeds the
-   value at build time.
-6. After the Vercel domain is known, set `FRONTEND_ORIGINS` and
-   `FRONTEND_BASE_URL` on Render to the exact Vercel origin(s), then redeploy
-   the API.
-7. Set `BACKEND_PUBLIC_URL` to the Render URL. PayHere notifications will be
-   sent to:
-   `https://furzy-api.onrender.com/payments/payhere/notify`.
-8. Run the production checks from the Render Shell:
-   ```bash
-   APP_ENV=production python -m app.check_production
-   python -m app.smoke_test --base-url https://furzy-api.onrender.com
-   ```
+   Use the exact Render URL and no trailing slash. The Vite build deliberately
+   fails if this value is missing or is not an `https://` URL.
+4. Deploy and copy the resulting Vercel production URL.
 
-### Neon and migrations
+### Step 5: Connect CORS and public URLs
 
-Neon’s pooled endpoint runs PgBouncer in transaction mode. Schema migrations
-should use the direct endpoint, so keep the direct URL in
-`MIGRATION_DATABASE_URL`. `alembic/env.py` uses that URL when present and
-falls back to `DATABASE_URL` otherwise. The application keeps using the
-pooled URL in `DATABASE_URL`.
+In Render, update these environment variables and save; Render restarts the
+API:
 
-The application engine uses `pool_pre_ping` and a five-minute connection
-recycle to survive Neon idle disconnects. A single API instance uses a small
-pool; tune `pool_size`/`max_overflow` in `app/database.py` if you add
-concurrency.
+- `FRONTEND_ORIGINS=https://your-project.vercel.app` — the exact Vercel
+  production origin, no trailing slash. Add custom domains as a
+  comma-separated list. Vercel preview domains need their own exact origins;
+  wildcard CORS is rejected.
+- `FRONTEND_BASE_URL=https://your-project.vercel.app` — used in email links
+  and PayHere return URLs.
+- `BACKEND_PUBLIC_URL=https://furzy-api.onrender.com` — used for the PayHere
+  notification URL.
 
-If Neon is suspended, its first connection can take several seconds. Render’s
-health check times out after five seconds, so a cold database can make
-`/health/ready` fail. Keep the database active, or use a Neon compute setting
-that does not suspend, if you see readiness restarts.
+If Render gave you a different service URL, use that exact URL.
 
-### Render disks and uploads
+### Step 6: Verify the demo
 
-Only files written under `/var/data/uploads` survive deploys and restarts.
-The health check verifies that directory is writable, and uploads are served
-from `/uploads`. Render snapshots disks daily and retains seven days of
-snapshots, but a disk-backed service cannot scale to multiple instances and
-deploys stop the old instance before starting the new one. For long-term
-durability or multiple instances, copy uploads to S3/Cloudinary and add an
-object-storage adapter.
+```bash
+curl https://furzy-api.onrender.com/health/ready
+```
+
+Then open the Vercel site, sign in as the admin, and try the main flow:
+browse, add to cart, place a Cash on Delivery order, and upload a product
+image in the admin panel. Wait for Render to sleep (15+ minutes), reload the
+product image, and confirm it still loads; this proves the image came from
+Neon rather than the ephemeral filesystem. If the image is missing, check that
+`alembic upgrade head` created the `uploaded_images` table.
+
+Run the API smoke test from your computer:
+
+```powershell
+cd backend
+$env:SMOKE_ADMIN_EMAIL = "you@example.com"
+$env:SMOKE_ADMIN_PASSWORD = "your-admin-password"
+python -m app.smoke_test --base-url https://furzy-api.onrender.com
+Remove-Item Env:SMOKE_ADMIN_PASSWORD
+Remove-Item Env:SMOKE_ADMIN_EMAIL
+```
+
+### Step 7: PayHere sandbox (optional)
+
+If you have PayHere sandbox credentials, add them in the Render dashboard:
+
+- `PAYHERE_MERCHANT_ID`
+- `PAYHERE_MERCHANT_SECRET`
+- optionally `PAYHERE_API_APP_ID` and `PAYHERE_API_APP_SECRET`
+
+Keep `PAYHERE_SANDBOX=true` and `PAYMENT_MOCK_ENABLED=false`. Never set
+`PAYHERE_SANDBOX=false` for this free demo. PayHere notifications go to:
+
+```text
+https://furzy-api.onrender.com/payments/payhere/notify
+```
+
+Render Free may be asleep when PayHere sends a notification; the request wakes
+the service, so allow for a cold start and retry sandbox tests if needed.
+Without sandbox credentials, checkout uses Cash on Delivery only.
+
+### Environment variables to configure
+
+#### Render (required)
+
+| Variable | Value |
+| --- | --- |
+| `DATABASE_URL` | Neon **pooled** URL, `postgresql+psycopg://`, with `sslmode=require` |
+| `FRONTEND_ORIGINS` | Exact Vercel origin(s), no trailing slash |
+| `FRONTEND_BASE_URL` | Exact Vercel origin used in links |
+| `BACKEND_PUBLIC_URL` | Render service HTTPS URL |
+| `JWT_SECRET` | Generated by Render; keep it |
+| `UPLOADS_DIR` | `/tmp/furzy-uploads` (local fallback only) |
+| `APP_ENV` | `production` |
+
+The committed `render.yaml` also sets these values for you:
+`PAYMENT_PROVIDER=payhere`, `PAYMENT_MOCK_ENABLED=false`,
+`PAYHERE_SANDBOX=true`, `EMAIL_VERIFICATION_REQUIRED=false`,
+`REVIEW_MODERATION_ENABLED=false`, `ADMIN_EMAIL_ALERTS_ENABLED=false`,
+`STOCK_RESERVATION_SWEEP_ENABLED=true`, and the shipping/return defaults.
+Do not change `PAYHERE_SANDBOX` to `false` for this demo.
+
+#### Render (optional)
+
+| Variable | Notes |
+| --- | --- |
+| `PAYHERE_MERCHANT_ID`, `PAYHERE_MERCHANT_SECRET` | Sandbox credentials only |
+| `PAYHERE_API_APP_ID`, `PAYHERE_API_APP_SECRET` | Optional Merchant API access |
+| `PAYHERE_SANDBOX` | Must remain `true` |
+| `ADMIN_ALERT_EMAILS` | No effect while `ADMIN_EMAIL_ALERTS_ENABLED=false` |
+| `SMTP_*` | Not usable on Render Free; leave unset |
+
+#### Vercel
+
+| Variable | Value |
+| --- | --- |
+| `VITE_API_URL` | Render HTTPS URL, no trailing slash, set for Production |
+
+#### Local computer only (not Render)
+
+| Variable | Purpose |
+| --- | --- |
+| `MIGRATION_DATABASE_URL` | Neon **direct** URL for Alembic |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Used only by the one-time `seed_admin` run |
+
+### Safe migrations and admin seeding
+
+- Render Free has no pre-deploy command and no shell. Run
+  `alembic upgrade head` from your computer against the direct Neon URL.
+- Never run `python -m app.seed` automatically or against an existing database.
+- Run `python -m app.seed_admin` once, then remove the admin password from
+  your temporary shell environment. The admin account is stored in Neon.
+- Neon Free keeps only a short restore history (6 hours) and one manual
+  snapshot. Export important data before destructive changes.
+
+### Free-tier warnings to plan for
+
+- Render sleeps after 15 minutes; the first request may take about a minute.
+- Render has 750 instance hours per month; sleeping does not consume hours.
+- Render’s filesystem is temporary; do not store product images there.
+- Neon suspends compute after 5 minutes; the first request may be slow.
+- Neon Free has 1 GB storage and 100 CU-hours per project per month.
+- Render Free blocks all outbound SMTP, so email features are unavailable.
+- Vercel Hobby is for non-commercial personal projects.
+- PayHere is sandbox-only; online payments require sandbox credentials.
 
 ### PostgreSQL compatibility notes
 
 - Use the `postgresql+psycopg://` SQLAlchemy prefix; `postgres://` is not
   accepted by SQLAlchemy 2.
 - Neon requires TLS; keep `sslmode=require`.
-- The admin-notification boolean default was corrected to a SQL boolean
-  default (`false`) so fresh PostgreSQL migrations accept it. SQLite accepts
-  the same expression.
+- The admin-notification boolean default uses the PostgreSQL boolean literal
+  `false`, so fresh migrations work on PostgreSQL and SQLite.
 - Existing SQLite databases are unaffected; this project does not migrate
   SQLite data into Neon. Start production from an empty Neon database and
   run `alembic upgrade head`.
@@ -148,13 +295,16 @@ driver prefix:
 postgresql+psycopg://USER:PASSWORD@HOST:5432/DATABASE?sslmode=require
 ```
 
-Run migrations from the backend directory during the release/deploy step:
+Run migrations from the backend directory:
 
 ```bash
 cd backend
 python -m alembic upgrade head
 ```
 
+Render Free has no pre-deploy command or shell, so run migrations from your
+computer with the Neon **direct** URL in `MIGRATION_DATABASE_URL`. Paid Render
+services can use `python -m alembic upgrade head` as the pre-deploy command.
 Do not run `python -m app.seed` in production; it is demo catalog data. Seed
 your real catalog through the admin panel or with a data-import script.
 
@@ -165,8 +315,9 @@ your real catalog through the admin panel or with a data-import script.
 - Root directory: `backend`
 - Build command: `pip install -r requirements.txt`
 - Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips=*`
-- Release command: `python -m alembic upgrade head`
 - Health check path: `/health/ready`
+- Release/pre-deploy: paid services only; Render **Free** has no pre-deploy
+  command, so run `alembic upgrade head` locally against the Neon direct URL.
 
 The proxy flags let Uvicorn read Render’s `X-Forwarded-Proto` header so
 HTTPS detection and HSTS work correctly behind the platform proxy.
@@ -177,12 +328,13 @@ A `backend/Dockerfile` is included:
 
 ```bash
 docker build -t furzy-api ./backend
-docker run --env-file backend/.env -p 8000:8000 \
-  -v furzy-uploads:/app/uploads furzy-api
+docker run --env-file backend/.env -p 8000:8000 furzy-api
 ```
 
-Run `python -m alembic upgrade head` before starting a new release/container.
-The image includes a `HEALTHCHECK` against `/health/ready`.
+Uploaded images are stored in PostgreSQL, so no uploads volume is required.
+A volume is only useful if you rely on the local filesystem fallback. Run
+`python -m alembic upgrade head` before starting a new release/container. The
+image includes a `HEALTHCHECK` against `/health/ready`.
 
 ### Health checks and smoke tests
 
@@ -211,6 +363,10 @@ The image includes a `HEALTHCHECK` against `/health/ready`.
   PayHere checkout credentials, a missing SMTP sender, or an unwritable uploads
   directory. It warns about sandbox mode, missing Merchant API credentials, and
   a missing database SSL parameter. It never prints secret values.
+- For the free demo, use `python -m app.check_production --free-demo`. Missing
+  SMTP, admin-email, and PayHere checkout credentials are downgraded to
+  warnings because email is unavailable on Render Free and online payments are
+  optional.
 
 ### Required environment variables
 
@@ -221,7 +377,7 @@ The image includes a `HEALTHCHECK` against `/health/ready`.
 | `APP_ENV` | Set to `production` in production; mock payments, weak/default JWT secrets, and wildcard CORS origins are rejected at startup there |
 | `JWT_SECRET` | Long random value, for example `python -c "import secrets; print(secrets.token_urlsafe(64))"` |
 | `FRONTEND_ORIGINS` | Comma-separated production frontend origins, no trailing slash |
-| `UPLOADS_DIR` | Directory on a persistent disk, for example `/var/data/uploads` |
+| `UPLOADS_DIR` | Local fallback/cache directory; uploaded images are stored in PostgreSQL. On Render Free use `/tmp/furzy-uploads` |
 | `SHIPPING_FEE_LKR` | Fallback flat checkout shipping fee when no active shipping method is configured |
 | `RETURN_WINDOW_DAYS` | Days after delivery in which customers can request a return (default 30); `0` disables the deadline |
 | `RETURN_POLICY_TEXT` | Customer-facing return-condition text returned by `/returns/policy` |
@@ -257,9 +413,10 @@ python -m app.seed_admin
 ```
 
 `seed_admin` refuses missing, invalid, placeholder, or known-default values.
-It never recreates the old development admin account. Remove the admin
-password from the runtime environment after seeding if your host supports
-separate release/run environments.
+It never recreates the old development admin account. For the free demo, run
+it locally with temporary environment variables so the admin password never
+enters Render. On a paid host, remove the admin password from the runtime
+environment after seeding.
 
 Do not commit `backend/.env`. It is ignored by Git and must be supplied through
 the host's secret manager.
@@ -268,6 +425,11 @@ Order confirmation and status emails are sent in the background after the
 database transaction succeeds. If SMTP is not configured, sending is skipped
 and logged; email failures never fail the order itself. Use an app-specific
 SMTP password rather than a mailbox password where the provider supports it.
+
+> **Render Free:** outbound SMTP ports 25, 465, and 587 are blocked. Leave
+> `SMTP_*` unset for the free demo. Email-dependent features are skipped, and
+> `EMAIL_VERIFICATION_REQUIRED` must remain `false`. Do not crash-test the
+> deployment by enabling SMTP without a paid instance or an HTTPS email API.
 
 When SMTP is configured, the same service sends:
 
@@ -289,10 +451,13 @@ published reviews count toward storefront ratings and averages.
 
 ### Uploads and multiple instances
 
-`UPLOADS_DIR` must be writable and persistent. On platforms with an ephemeral
-filesystem (for example, many serverless deployments), mount a persistent disk
-or add an object-storage adapter. If you run more than one API instance, local
-disk uploads are not shared; use Cloudinary, S3, or another shared store.
+Admin-uploaded product images are stored in PostgreSQL and served from
+`/uploads/<filename>`, so they survive Render restarts, redeploys, and free-tier
+sleep. `UPLOADS_DIR` is only a local fallback/cache for legacy files and
+development; on Render Free it points to `/tmp/furzy-uploads`, which is
+ephemeral. Database-backed uploads are shared by multiple API instances, but
+they count toward the Neon storage limit. For a large catalog, use S3,
+Cloudinary, or another object store instead.
 
 ### Rate limiting
 
@@ -580,40 +745,40 @@ online payment.
 ## 7. Production security checklist
 
 - [ ] Strong `JWT_SECRET` and a new admin password; no `.env` in Git.
+- [ ] Vercel Hobby is used for a non-commercial personal/university demo.
 - [ ] `FRONTEND_ORIGINS` limited to the real frontend origin(s).
 - [ ] `FRONTEND_BASE_URL` and `BACKEND_PUBLIC_URL` are the public HTTPS URLs.
 - [ ] HTTPS enforced by the host; HSTS is sent for HTTPS requests.
 - [ ] Database backups and SSL enabled.
 - [ ] `DATABASE_URL` uses Neon’s pooled URL (if used) with `sslmode=require`.
 - [ ] `MIGRATION_DATABASE_URL` uses Neon’s direct URL for Alembic.
-- [ ] Render Blueprint uses a paid plan with the uploads disk mounted at `/var/data/uploads` and `UPLOADS_DIR` matching.
-- [ ] Render health check is `/health/ready`; pre-deploy runs `python -m alembic upgrade head`.
-- [ ] Render `autoDeployTrigger` is intentional (`off` in the committed Blueprint); enable deployment when launch is approved.
+- [ ] Render Blueprint uses the **free** plan, has no disk, and sets `UPLOADS_DIR=/tmp/furzy-uploads`.
+- [ ] Render health check is `/health/ready`; migrations were run locally because pre-deploy is unavailable on Free.
+- [ ] Render `autoDeployTrigger` is intentional (`off` in the committed Blueprint); enable deployment when ready.
 - [ ] Vercel `VITE_API_URL` points at the Render URL and the frontend has been redeployed after the value was set.
-- [ ] Uploads directory private to the app and backed up.
-- [ ] SMTP password stored as a secret; sender domain configured and tested for order, verification, reset, and admin alert email.
-- [ ] `EMAIL_VERIFICATION_REQUIRED`, `REVIEW_MODERATION_ENABLED`, and `ADMIN_EMAIL_ALERTS_ENABLED` set intentionally for launch.
-- [ ] Password reset, email verification, and admin alert emails tested end to end with a real mailbox.
-- [ ] PayHere merchant secret stored as a secret; sandbox disabled for live.
-- [ ] PayHere Merchant API key restricted to the required permissions/domain/IP.
-- [ ] Return workflow reviewed: item-level requests, admin completion before restocking, and return status emails.
+- [ ] Uploaded product images are stored in PostgreSQL and survive a Render sleep/redeploy.
+- [ ] `UPLOADS_DIR` is understood to be a temporary local fallback, not durable storage.
+- [ ] Email is intentionally disabled for the free demo (no SMTP; `EMAIL_VERIFICATION_REQUIRED=false`).
+- [ ] `EMAIL_VERIFICATION_REQUIRED`, `REVIEW_MODERATION_ENABLED`, and `ADMIN_EMAIL_ALERTS_ENABLED` are set intentionally for the demo.
+- [ ] `PAYHERE_SANDBOX=true`, `PAYMENT_PROVIDER=payhere`, and `PAYMENT_MOCK_ENABLED=false`; live mode was never enabled.
+- [ ] PayHere sandbox credentials (if supplied) are stored in Render's environment and never committed.
+- [ ] Return workflow reviewed: item-level requests and admin completion before restocking.
 - [ ] Review moderation policy reviewed (enable the queue, or confirm immediate publishing), and the admin Reviews page loads.
 - [ ] Order activity timeline checked on a test order after status changes, a detail edit, and a return.
 - [ ] Inventory low-stock thresholds reviewed per variant and the stock-movement audit history checked after a test order, cancellation, and return.
-- [ ] `APP_ENV=production`, `PAYMENT_PROVIDER=payhere`, and `PAYMENT_MOCK_ENABLED=false`.
-- [ ] `BACKEND_PUBLIC_URL/payments/payhere/notify` reachable over HTTPS.
-- [ ] Stock reservation expiry configured and, if the in-process sweeper is disabled, a cron job runs `python -m app.expire_reservations`.
-- [ ] Login rate limiting sized for your traffic or moved to Redis.
-- [ ] Admin account verified with `python -m app.seed_admin` validation rules.
-- [ ] `ADMIN_PASSWORD` removed from the runtime environment after the one-time admin seed.
-- [ ] Demo catalog seed (`python -m app.seed`) was never run in production.
+- [ ] `APP_ENV=production`.
+- [ ] `BACKEND_PUBLIC_URL/payments/payhere/notify` reachable over HTTPS when PayHere sandbox is enabled.
+- [ ] Render sleep (15 minutes) and Neon autosuspend (5 minutes) are understood; cold starts are accepted for the demo.
+- [ ] Stock reservation expiry is understood to run only while the free service is awake.
+- [ ] Admin account was seeded locally; `ADMIN_PASSWORD` is not stored in Render.
+- [ ] Demo catalog seed (`python -m app.seed`) was never run.
 - [ ] Host health check points to `/health/ready`; the included Docker health check is active if using the image.
 - [ ] PostgreSQL migrations were applied to a fresh Neon database with `alembic upgrade head` and completed without SQLite-specific errors.
 - [ ] `python -m app.smoke_test --base-url https://api.example.com` passes after deployment.
-- [ ] `APP_ENV=production` starts successfully with the final JWT secret and CORS origins, and fails with intentionally weak values.
-- [ ] `APP_ENV=production python -m app.check_production` passes (warnings reviewed) before the release.
+- [ ] `APP_ENV=production` starts successfully with the final JWT secret and CORS origins.
+- [ ] `APP_ENV=production python -m app.check_production --free-demo` passes with only expected warnings.
 - [ ] Dependencies updated and `npm audit` / `pip-audit` reviewed.
 - [ ] `python -m pytest` and `npm test` green before deployment.
 - [ ] `npm run build` succeeds with the production `VITE_API_URL`.
-- [ ] A Render deploy/restart keeps uploaded files (disk persistence verified).
-- [ ] A rollback plan exists; migrations are backward-compatible and a Neon backup/snapshot is available.
+- [ ] A Render restart/sleep keeps uploaded images (database storage verified).
+- [ ] Neon's 1 GB storage / 100 CU-hours and 6-hour restore window are understood; a rollback plan exists.

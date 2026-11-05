@@ -20,7 +20,9 @@ class Settings(BaseSettings):
     # using a pooled URL in DATABASE_URL.
     migration_database_url: str = ""
 
-    # Uploaded product images.
+    # Local fallback/cache for uploaded images. Admin-uploaded product
+    # images are stored in PostgreSQL; this directory serves legacy local
+    # files and is used only when the database table is unavailable.
     uploads_dir: str = str(BACKEND_DIR / "uploads")
     max_upload_bytes: int = 5 * 1024 * 1024
 

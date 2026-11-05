@@ -1,4 +1,8 @@
-from app.check_production import environment_checks
+from app.check_production import (
+    Check,
+    _apply_free_demo_mode,
+    environment_checks,
+)
 from app.config import Settings
 from app.payhere_check import config_checks
 
@@ -157,6 +161,44 @@ def test_pooled_neon_url_requires_a_direct_migration_url(
         if check.name == "MIGRATION_DATABASE_POOLING"
     )
     assert pooling.status == "PASS"
+
+
+def test_free_demo_downgrades_only_optional_failures(
+    tmp_path,
+):
+    config = _production_settings(
+        tmp_path, payhere_sandbox=True
+    )
+    checks = [
+        Check("FAIL", "SMTP", "missing"),
+        Check(
+            "FAIL",
+            "PAYHERE_CHECKOUT_CREDENTIALS",
+            "missing",
+        ),
+        Check("FAIL", "DATABASE_URL", "not postgres"),
+        Check("WARN", "PAYHERE_SANDBOX", "sandbox"),
+        Check("WARN", "MIGRATION_DATABASE_URL", "pooled"),
+    ]
+    _apply_free_demo_mode(checks, config)
+
+    assert checks[0].status == "WARN"
+    assert "optional" in checks[0].detail
+    assert checks[1].status == "WARN"
+    assert checks[2].status == "FAIL"
+    assert checks[3].status == "PASS"
+    assert "required" in checks[3].detail
+    assert checks[4].status == "PASS"
+
+    live_config = _production_settings(
+        tmp_path, payhere_sandbox=False
+    )
+    live_checks = [
+        Check("WARN", "PAYHERE_SANDBOX", "live")
+    ]
+    _apply_free_demo_mode(live_checks, live_config)
+    assert live_checks[0].status == "FAIL"
+    assert "not allowed" in live_checks[0].detail
 
 
 def test_payhere_sandbox_configuration_checks(tmp_path):

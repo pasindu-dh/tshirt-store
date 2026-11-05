@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { requestPasswordReset } from "../api/auth";
+import {
+  getAuthConfig,
+  requestPasswordReset,
+} from "../api/auth";
 import { getApiError } from "../utils/errors";
 
 function ForgotPassword() {
@@ -8,6 +11,27 @@ function ForgotPassword() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [resetAvailable, setResetAvailable] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getAuthConfig()
+      .then((config) => {
+        if (!cancelled) {
+          setResetAvailable(
+            Boolean(config.password_reset_available)
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setResetAvailable(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -59,6 +83,14 @@ function ForgotPassword() {
             />
           </label>
 
+          {resetAvailable === false && (
+            <p className="text-yellow-400 text-sm">
+              Email delivery is not configured for this deployment,
+              so password reset emails cannot be sent. Contact the
+              store administrator if you need help signing in.
+            </p>
+          )}
+
           {error && <p className="text-red-400 text-sm">{error}</p>}
           {message && (
             <p className="text-green-400 text-sm">{message}</p>
@@ -66,7 +98,7 @@ function ForgotPassword() {
 
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || resetAvailable === false}
             className="w-full bg-cyan-400 text-black py-3 rounded-lg font-semibold hover:bg-cyan-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? "Sending..." : "Send reset link"}

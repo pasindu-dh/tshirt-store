@@ -11,6 +11,7 @@ from app.models.product import Product, ProductImage, ProductVariant
 from app.models.review import Review
 from app.models.return_request import ReturnItem, ReturnRequest
 from app.models.shipping import ShippingMethod
+from app.models.uploaded_image import UploadedImage
 from app.models.user import User
 from app.models.wishlist import WishlistItem
 
@@ -30,6 +31,7 @@ __all__ = [
     "ReturnItem",
     "ShippingMethod",
     "StockMovement",
+    "UploadedImage",
     "Product",
     "ProductImage",
     "ProductVariant",

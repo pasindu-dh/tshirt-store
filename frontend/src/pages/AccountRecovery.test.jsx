@@ -10,6 +10,7 @@ import ForgotPassword from "./ForgotPassword";
 import ResetPassword from "./ResetPassword";
 import VerifyEmail from "./VerifyEmail";
 import {
+  getAuthConfig,
   requestPasswordReset,
   resendEmailVerification,
   resetPassword,
@@ -17,6 +18,7 @@ import {
 } from "../api/auth";
 
 vi.mock("../api/auth", () => ({
+  getAuthConfig: vi.fn(),
   requestPasswordReset: vi.fn(),
   resetPassword: vi.fn(),
   resendEmailVerification: vi.fn(),
@@ -39,6 +41,11 @@ vi.mock("../hooks/useAuth", () => ({
 describe("account recovery pages", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getAuthConfig.mockResolvedValue({
+      password_reset_available: true,
+      email_verification_required: false,
+      email_verification_available: true,
+    });
     requestPasswordReset.mockResolvedValue({
       message: "If an account exists, an email has been sent.",
     });
@@ -77,6 +84,28 @@ describe("account recovery pages", () => {
         "If an account exists, an email has been sent."
       )
     ).toBeInTheDocument();
+  });
+
+  it("disables password reset when email delivery is unavailable", async () => {
+    getAuthConfig.mockResolvedValue({
+      password_reset_available: false,
+      email_verification_required: false,
+      email_verification_available: false,
+    });
+
+    render(
+      <MemoryRouter>
+        <ForgotPassword />
+      </MemoryRouter>
+    );
+
+    expect(
+      await screen.findByText(/Email delivery is not configured/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Send reset link" })
+    ).toBeDisabled();
+    expect(requestPasswordReset).not.toHaveBeenCalled();
   });
 
   it("resets a password with a token", async () => {
